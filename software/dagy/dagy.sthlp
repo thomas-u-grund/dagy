@@ -173,6 +173,17 @@ Its toolbar's "Export PNG" button saves a static image of the current view
 if you want one for a paper or slide deck; there is no scripted/unattended
 static-export path.
 
+{pstd}
+The viewer also lets you edit the graph itself - "Add node"/"Add edge"
+(click the button, then click the canvas) and "Delete" (select a node or
+edge, or press Delete/Backspace), plus a Latent checkbox in the node
+inspector. "Export DAG" then saves everything - including your edits -
+as a dagitty model file; reload it for real with {help dagy##import:dagy
+import} {it:name}{cmd:, file("...") replace}. A node with no edges at
+all has nothing to export it as ({cmd:dagy}'s own DAGs are edge-lists
+only) and is silently dropped on import - connect it to something
+first.
+
 {marker layout}{...}
 {title:dagy layout}
 
@@ -524,6 +535,11 @@ every node, is imported as the DAG's layout (see {cmd:dagy layout}),
 preserving the source model's arrangement instead of computing a new
 one. A node with no edges at all is silently dropped, matching
 {cmd:dagy define}'s own edge-list-only model.
+
+{pstd}
+This is also how {cmd:dagy draw}'s own interactive viewer round-trips
+edits back into {cmd:dagy} - its "Export DAG" button writes exactly this
+format (see {bf:dagy draw} above).
 
 {title:Examples}
 

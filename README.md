@@ -58,6 +58,10 @@ a graphical sensitivity check for back-door adjustment sets. See
 `docs/article/dagy.tex` for the full writeup (currently still describing
 the earlier `nwcommands`-based version - due for an update to match).
 
-`dagy draw`'s interactive viewer is next in line for a two-way editor -
-adding/deleting nodes directly in the viewer, not just panning/zooming/
-dragging.
+`dagy draw`'s interactive viewer now round-trips: add/delete nodes and
+edges (and a Latent toggle) directly in the viewer, then its "Export
+DAG" button writes a dagitty model file that `dagy import <name>,
+file("...") replace` loads back for real - no separate Stata-side
+importer needed, it reuses `dagy import`'s existing dagitty parser. A
+node with no edges at all is dropped on import (`dagy`'s DAGs are
+edge-lists only), so connect a new node to something before exporting.
