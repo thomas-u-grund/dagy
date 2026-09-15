@@ -1,0 +1,14 @@
+.DS_Store
+docs/article/*.aux
+docs/article/*.log
+docs/article/*.out
+docs/book/*.aux
+docs/book/*.log
+docs/book/*.out
+docs/book/*.toc
+docs/book/*.lof
+docs/book/*.lot
+docs/book/*.idx
+docs/book/*.ilg
+docs/book/*.ind
+docs/book/*.blg

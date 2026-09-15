@@ -1,0 +1,11 @@
+dag {
+bb="0,0,1,1"
+age [pos="0.1,0.1"]
+ability [pos="0.1,0.9"]
+education [exposure,pos="0.5,0.5"]
+earnings [outcome,pos="0.9,0.5"]
+age -> education
+ability -> education
+ability -> earnings
+education -> earnings
+}

@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>nwplot interactive</title>
+<script>
+__NWEDIT_CYTOSCAPE__
+</script>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, Helvetica, Arial, sans-serif; }
+  #cy { position: absolute; top: 58px; left: 0; right: 260px; bottom: 0; }
+  /* Space Invaders Easter egg overlay (setupSpaceInvadersEasterEgg) -- sits
+     exactly over #cy's own box so node.renderedPosition() lines up with
+     this canvas's pixel space, but pointer-events:none so it never blocks
+     normal node clicks/drags when the game isn't running (display:none by
+     default; the game itself toggles display:block/none, never removes
+     the element). z-index kept below #plotLegend's 50 so the draggable
+     legend still shows on top if it happens to overlap the game area. */
+  #siCanvas { position: absolute; top: 58px; left: 0; right: 260px; bottom: 0; z-index: 45; pointer-events: none; display: none; }
+  /* Mirrors Stata's own Graph window toolbar (icon-over-label buttons on a
+     light gray strip, a thin ruled bottom edge, dark-gray glyphs) rather
+     than an ordinary web app's dark navbar with pill buttons -- since this
+     window already sits inside a chromeless native frame (nwedit_viewer),
+     the in-page toolbar is the only "chrome" the user sees at all, so
+     matching Stata's own graph-window look as closely as possible is what
+     makes it read as a native Stata surface rather than a web page. */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0; height: 58px;
+    background: #ececec; color: #333; display: flex; align-items: center;
+    padding: 0 14px; gap: 4px; font-size: 13px; box-sizing: border-box;
+    border-bottom: 1px solid #bbb;
+  }
+  #topbar .title { font-weight: 600; color: #333; margin-right: 10px; white-space: nowrap; }
+  #topbar .toolbtn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; background: none; border: 1px solid transparent; color: #333;
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 10px;
+    font-family: inherit; line-height: 1.1;
+  }
+  #topbar .toolbtn svg { width: 20px; height: 20px; }
+  #topbar .toolbtn:hover { background: #fff; border-color: #ccc; }
+  #topbar .toolbtn:active { background: #e0e0e0; }
+  #topbar .sep { width: 1px; align-self: stretch; margin: 8px 6px; background: #ccc; }
+  #fps { margin-left: auto; color: #789; font-variant-numeric: tabular-nums; font-size: 12px; }
+  #panel {
+    position: absolute; top: 58px; right: 0; bottom: 0; width: 260px;
+    background: #fafafa; border-left: 1px solid #ddd; box-sizing: border-box;
+    padding: 14px; overflow-y: auto; font-size: 13px;
+  }
+  #panel h3 { margin-top: 0; font-size: 14px; color: #333; }
+  #panel .row { margin-bottom: 8px; }
+  #panel .label { color: #888; font-size: 11px; text-transform: uppercase; }
+  #panel .value { font-size: 14px; color: #222; word-break: break-word; }
+  #panel .empty { color: #999; font-style: italic; }
+  #panel .section { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid #e3e3e3; }
+  #panel .hint { color: #888; font-size: 11px; margin-top: 6px; line-height: 1.4; }
+  .legend-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .legend-row .key { flex: 1; font-size: 12px; color: #333; }
+  .legend-row input[type=color] { width: 26px; height: 22px; padding: 0; border: 1px solid #ccc; border-radius: 3px; }
+  .legend-row select { font-size: 12px; padding: 1px; }
+  .size-legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .size-legend-row .swatch { flex: 0 0 auto; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+  .size-legend-row .key { font-size: 12px; color: #333; }
+  #sizeFactorLabel, #edgeFactorLabel { font-variant-numeric: tabular-nums; color: #555; }
+  #sizeFactor, #edgeFactor { width: 100%; }
+  #plotLegend {
+    /* Stata's own twoway legend defaults to a horizontally centered band
+       below the plot region, not floating over the data -- bottom-center
+       is the closer visual match, vs. the earlier top-left placement that
+       sat on top of the graph. Still draggable from there if it overlaps. */
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    min-width: 130px; min-height: 50px;
+    max-width: 90%; max-height: 80%;
+    background: rgba(255,255,255,0.95); border: 1px solid #999; border-radius: 3px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.25); font-size: 12px; z-index: 50;
+    resize: both; overflow: auto; box-sizing: border-box;
+  }
+  #plotLegendHandle {
+    background: #eee; border-bottom: 1px solid #ccc; padding: 4px 8px;
+    cursor: move; font-weight: bold; font-size: 11px; color: #444; user-select: none;
+  }
+  #plotLegendBody { padding: 6px 10px; }
+  .plot-legend-row { display: flex; align-items: center; gap: 0.5em; margin: 0.25em 0; white-space: nowrap; }
+  .plot-legend-row svg { flex-shrink: 0; }
+  .plot-legend-section-title { font-size: 0.83em; text-transform: uppercase; color: #888; margin: 0.5em 0 0.2em; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="title">nwplot interactive</span>
+  <div class="sep"></div>
+  <button id="saveNodesBtn" class="toolbtn" title="Save node edits (.csv)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M4 4h13l3 3v13H4z"/><path d="M7 4v6h9V4"/><rect x="7" y="14" width="7" height="6"/>
+    </svg>
+    <span>Save nodes</span>
+  </button>
+  <button id="saveEdgesBtn" class="toolbtn" title="Save edge edits (.csv)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M4 4h13l3 3v13H4z"/><path d="M7 4v6h9V4"/><rect x="7" y="14" width="7" height="6"/>
+    </svg>
+    <span>Save edges</span>
+  </button>
+  <div class="sep"></div>
+  <button id="exportBtn" class="toolbtn" title="Export PNG">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="9" cy="10" r="1.8" fill="#333" stroke="none"/><path d="M3 16l5.5-5 4 4L17 10l4 4"/>
+    </svg>
+    <span>Export PNG</span>
+  </button>
+  <div class="sep"></div>
+  <span id="counts" style="font-size:12px; color:#555;"></span>
+  <span id="fps"></span>
+</div>
+
+<div id="cy"></div>
+<canvas id="siCanvas"></canvas>
+
+<div id="plotLegend">
+  <div id="plotLegendHandle">Legend</div>
+  <div id="plotLegendBody"></div>
+</div>
+
+<div id="panel">
+  <div class="section">
+    <h3>Node legend (color / shape)</h3>
+    <div id="legendRows"></div>
+  </div>
+  <div class="section">
+    <h3>Node size factor</h3>
+    <input type="range" id="sizeFactor" min="0.25" max="3" step="0.05" value="1">
+    <div id="sizeFactorLabel">1.00&times; (mirrors nwplot's nodefactor())</div>
+  </div>
+  <div class="section" id="sizeLegendSection" hidden>
+    <h3>Node size legend</h3>
+    <div id="sizeLegendRows"></div>
+  </div>
+  <div class="section">
+    <h3>Edge legend (color / pattern)</h3>
+    <div id="edgeLegendRows"></div>
+  </div>
+  <div class="section">
+    <h3>Edge width factor</h3>
+    <input type="range" id="edgeFactor" min="0.25" max="3" step="0.05" value="1">
+    <div id="edgeFactorLabel">1.00&times; (mirrors nwplot's edgefactor())</div>
+  </div>
+  <div class="section">
+    <h3>Arrow style</h3>
+    <input type="range" id="arrowSizeFactor" min="0.25" max="3" step="0.05" value="1">
+    <div id="arrowSizeFactorLabel">1.00&times; arrow size</div>
+    <div class="row" style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+      <span class="label" style="text-transform:none; font-size:12px; color:#555;">Arrow color</span>
+      <input type="color" id="arrowColorPicker" value="#333333">
+    </div>
+    <div class="hint">Sets every arrowhead's color; each arrow starts matching its own edge's color.</div>
+  </div>
+  <div class="section" style="border-bottom:none; margin-bottom:0; padding-bottom:0;">
+    <h3>Node inspector</h3>
+    <div id="inspect"><div class="empty">Click a node to inspect it.</div></div>
+    <div class="hint">Save both CSVs to a known folder, then re-run nwplot with
+      nodexy(x y) importcoords("nodes.csv") edgeimport("edges.csv") to apply these edits.</div>
+  </div>
+</div>
+
+<script>
+let cy = null;
+const NODE_DATA = __NWEDIT_DATA__;
+
+let legendState = {};       // node group key -> { color, shape } -- current legend, editable
+let edgeLegendState = {};   // edge group key -> { color, style } -- same pattern, for edges
+let sizeLegendState = [];   // [{ label, size_px }] -- fixed list from nwplot.ado, not per-node-group-keyed like the other two, and not editable (size stays governed by the single size-factor slider, matching nwplot's own "size is a scale, not a per-key override" model)
+// Mirrors nwplot.ado's own legend(off) gate (nwplot.ado:1932, keysused==0)
+// plus its own "more than one distinct group" requirement -- a single-entry
+// legend conveys nothing, and the real static plot never triggered
+// color()/symbol()/edgecolor() grouping in the first place for the default
+// single-dummy-group case. See has_node_legend/has_edge_legend in the
+// embedded NODE_DATA, set by _nwedit_buildinteractivehtml() in nwplot.ado.
+let hasNodeLegend = true;
+let hasEdgeLegend = true;
+let hasSizeLegend = true;   // independent of hasNodeLegend -- size and color/shape are separate legend dimensions on the real static plot too (see nwplot.ado's own `_nwedit_hassizelegend' comment)
+let selectedNodeId = null;
+
+// Stata's own vocabulary end to end (msymbol names / linepatternstyle names),
+// not cytoscape's -- these are exactly what color()/symbol()/edgecolor()'s
+// _getcolorstyle-resolved group indices already speak (nwplot.ado:1980-2056),
+// and what importcoords()/edgeimport() need to read back without translation.
+// Only the cytoscape `style:` block below needs to know the cytoscape-side
+// equivalent, so the mapping stays local to rendering.
+const SHAPE_CHOICES = ['circle', 'square', 'triangle', 'diamond'];
+const EDGE_STYLE_CHOICES = ['solid', 'dash', 'dot'];
+const STATA_TO_CY_SHAPE = { circle: 'ellipse', square: 'rectangle', triangle: 'triangle', diamond: 'diamond' };
+const STATA_TO_CY_LINESTYLE = { solid: 'solid', dash: 'dashed', dot: 'dotted' };
+
+// "#rrggbb" (from <input type=color>) -> Stata colorstyle "r g b" triplet --
+// done here, not in Stata, since Stata/Mata has no hex parser; importcoords()
+// just reads the already-converted string straight into mcolor()/mfcolor().
+function hexToRgbString(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `${r} ${g} ${b}`;
+}
+function rgbStringToHex(rgb) {
+  const [r, g, b] = rgb.trim().split(/\s+/).map(Number);
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Shape/edge-style swatches for the on-canvas legend -- kept as small, cheap
+// SVG (for the live overlay) and a parallel Canvas-2D drawer (for PNG
+// export, since cy.png() only rasterizes the cytoscape canvas itself, not
+// this HTML overlay div) -- both read from the same legendState/
+// edgeLegendState via getLegendEntries() so the two renderings can't drift.
+function shapeSwatchSvg(shape, colorHex, scale = 1) {
+  let inner;
+  if (shape === 'square') inner = `<rect x="1" y="1" width="10" height="10" fill="${colorHex}"/>`;
+  else if (shape === 'triangle') inner = `<polygon points="6,1 11,11 1,11" fill="${colorHex}"/>`;
+  else if (shape === 'diamond') inner = `<polygon points="6,1 11,6 6,11 1,6" fill="${colorHex}"/>`;
+  else inner = `<circle cx="6" cy="6" r="5" fill="${colorHex}"/>`;
+  // viewBox stays fixed; only the rendered width/height scale, so the SVG's
+  // own default preserveAspectRatio scales the vector content to fit --
+  // no need to recompute the shape coordinates above per scale.
+  const px = 12 * scale;
+  return `<svg width="${px}" height="${px}" viewBox="0 0 12 12">${inner}</svg>`;
+}
+function edgeSwatchSvg(colorHex, style, scale = 1) {
+  const dash = style === 'dash' ? '4,2' : style === 'dot' ? '1,2' : '0';
+  return `<svg width="${24 * scale}" height="${12 * scale}" viewBox="0 0 24 12"><line x1="1" y1="6" x2="23" y2="6" stroke="${colorHex}" stroke-width="2" stroke-dasharray="${dash}"/></svg>`;
+}
+
+// Node-size legend swatch: unlike the fixed-size color/shape swatches
+// above, this one actually varies its circle's radius with sizePx (already
+// in the same CSS-px scale the real rendered nodes use -- see nwplot.ado's
+// `_nwedit_sizelegend_px_N' locals, built from `nsizerow' for exactly this
+// reason) so entries read as genuinely different sizes, the way nwplot's
+// own static-plot size legend draws two differently-sized dots for e.g.
+// "wealth = 3" / "wealth = 146". Clamped into a compact legend-row range
+// rather than shown at full on-canvas size, which for a real network can
+// be far larger than a sidebar row has room for.
+// `sizePx' here is already the on-screen magnitude the caller wants drawn
+// (its own base CSS-px value times the current cy.zoom(), applied by the
+// caller -- see currentSizeLegendPx()) -- this function just clamps it into
+// a legend-row-sized box, it doesn't know about zoom itself.
+function sizeSwatchSvg(sizePx, scale = 1) {
+  // Clamp floor raised from an earlier 6 to 8: nwplot's own size-scaling
+  // formula (nwplot.ado, the `1000 + 3000*ratio' branch) already keeps the
+  // smallest-to-largest px ratio sane (a real florentine-data check gave
+  // ~5 vs ~19, under 4x) rather than the pathological range a raw data
+  // ratio could produce, so a modest floor barely touches real cases but
+  // stops a degenerate near-zero value from rendering as an invisible
+  // speck once the box itself gets dragged large.
+  const d = Math.max(8, Math.min(36, sizePx));
+  // box == viewBox's own extent (both 40) -- no padding mismatch between
+  // them, so scale multiplies the rendered circle exactly like
+  // shapeSwatchSvg's r=5-in-a-12-viewBox does, giving the two swatch types
+  // matching visual weight (and matching resize-responsiveness) at any
+  // given legendScale, including the drag-resize-the-legend-box case
+  // (applyLegendScale) and the canvas-zoom case (currentSizeLegendPx).
+  const box = 40 * scale;
+  return `<svg width="${box}" height="${box}" viewBox="0 0 40 40"><circle cx="20" cy="20" r="${d / 2}" fill="#888"/></svg>`;
+}
+
+// Node circles on the canvas are drawn at `data(size)' CSS px and then
+// scaled by cytoscape's own viewport zoom -- so a size legend that always
+// draws at the unzoomed base px becomes misleading the moment the user
+// zooms in/out (a node can look much bigger/smaller on screen than its
+// legend swatch suggests). Multiplying by cy.zoom() here keeps the legend
+// swatches honest at any zoom level; called fresh on every 'zoom' event
+// (see the cy.on('zoom', ...) wiring in render()), not just once at load.
+function currentSizeLegendPx(baseSizePx) {
+  const z = cy ? cy.zoom() : 1;
+  return baseSizePx * z;
+}
+
+function getLegendEntries() {
+  const nodeEntries = Object.keys(legendState).map(k => ({
+    label: legendState[k].label, shape: legendState[k].shape, color: legendState[k].color
+  }));
+  const edgeEntries = Object.keys(edgeLegendState).map(k => ({
+    label: edgeLegendState[k].label, style: edgeLegendState[k].style, color: edgeLegendState[k].color
+  }));
+  const sizeEntries = sizeLegendState.map(e => ({ label: e.label, size_px: currentSizeLegendPx(e.size_px) }));
+  return { nodeEntries, edgeEntries, sizeEntries };
+}
+
+// The floating legend box lives inside the canvas area (like a real Stata
+// graph legend drawn on the plot itself), not just the sidebar's editable
+// rows -- draggable via #plotLegendHandle, resizable via native CSS
+// `resize: both` on #plotLegend.
+function buildPlotLegend() {
+  const box = document.getElementById('plotLegend');
+  if (!hasNodeLegend && !hasEdgeLegend && !hasSizeLegend) {
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = '';
+
+  const { nodeEntries, edgeEntries, sizeEntries } = getLegendEntries();
+  let html = '';
+  if (hasNodeLegend && nodeEntries.length) {
+    html += '<div class="plot-legend-section-title">Nodes</div>';
+    for (const e of nodeEntries) {
+      html += `<div class="plot-legend-row">${shapeSwatchSvg(e.shape, e.color, legendScale)}<span>${escapeHtml(e.label)}</span></div>`;
+    }
+  }
+  if (hasSizeLegend && sizeEntries.length) {
+    html += '<div class="plot-legend-section-title">Sizes</div>';
+    for (const e of sizeEntries) {
+      html += `<div class="plot-legend-row">${sizeSwatchSvg(e.size_px, legendScale)}<span>${escapeHtml(e.label)}</span></div>`;
+    }
+  }
+  if (hasEdgeLegend && edgeEntries.length) {
+    html += '<div class="plot-legend-section-title">Edges</div>';
+    for (const e of edgeEntries) {
+      html += `<div class="plot-legend-row">${edgeSwatchSvg(e.color, e.style, legendScale)}<span>${escapeHtml(e.label)}</span></div>`;
+    }
+  }
+  document.getElementById('plotLegendBody').innerHTML = html;
+}
+
+function enableLegendDrag() {
+  const box = document.getElementById('plotLegend');
+  const handle = document.getElementById('plotLegendHandle');
+  let dragging = false, offX = 0, offY = 0;
+  handle.addEventListener('mousedown', e => {
+    // Default position is bottom/left/transform (centered under the plot,
+    // like Stata's own legend placement); convert that into plain
+    // left/top pixel values at the moment dragging starts, from the
+    // element's actual current position, so the first drag doesn't jump.
+    const rect = box.getBoundingClientRect();
+    box.style.left = rect.left + 'px';
+    box.style.top = rect.top + 'px';
+    box.style.bottom = 'auto';
+    box.style.transform = 'none';
+    dragging = true;
+    offX = e.clientX - box.offsetLeft;
+    offY = e.clientY - box.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    box.style.left = (e.clientX - offX) + 'px';
+    box.style.top = (e.clientY - offY) + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+}
+
+// Native CSS `resize: both` only changes #plotLegend's own box -- text and
+// swatches inside stayed a fixed pixel size, so a bigger box just showed
+// more empty padding / a scrollbar instead of visibly bigger content.
+// ResizeObserver reports box size on every native resize-handle drag (and
+// once immediately on observe(), which gives us the "1x" baseline for
+// free); legendScale is then applied to the swatch SVG dimensions and to
+// plotLegendBody's own font-size (everything else -- row gaps, section
+// title size -- is already in em units, so it tracks font-size for free).
+let legendScale = 1;
+let legendBaseWidth = null;
+
+function applyLegendScale(width) {
+  if (legendBaseWidth === null) legendBaseWidth = width;
+  legendScale = Math.min(4, Math.max(0.6, width / legendBaseWidth));
+  document.getElementById('plotLegendBody').style.fontSize = (12 * legendScale) + 'px';
+  buildPlotLegend();
+}
+
+function enableLegendResize() {
+  const box = document.getElementById('plotLegend');
+  if (!window.ResizeObserver) return;
+  const ro = new ResizeObserver(entries => {
+    for (const entry of entries) applyLegendScale(entry.contentRect.width);
+  });
+  ro.observe(box);
+}
+
+// Canvas-2D counterpart of shapeSwatchSvg/edgeSwatchSvg, used only by
+// exportPng() to bake the legend into the exported image at its current
+// on-screen position/size.
+function drawShapeOnCanvas(ctx, shape, colorHex, cx, cy, r) {
+  ctx.fillStyle = colorHex;
+  ctx.beginPath();
+  if (shape === 'square') {
+    ctx.rect(cx - r, cy - r, r * 2, r * 2);
+  } else if (shape === 'triangle') {
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r, cy + r);
+    ctx.lineTo(cx - r, cy + r);
+    ctx.closePath();
+  } else if (shape === 'diamond') {
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r, cy);
+    ctx.lineTo(cx, cy + r);
+    ctx.lineTo(cx - r, cy);
+    ctx.closePath();
+  } else {
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+function drawLegendOnCanvas(ctx, x, y, w, h, scale) {
+  if (!hasNodeLegend && !hasEdgeLegend && !hasSizeLegend) return;   // box itself is hidden live (see buildPlotLegend); export matches
+  const { nodeEntries, edgeEntries, sizeEntries } = getLegendEntries();
+  // scale is the fixed PNG export resolution multiplier (2x); legendScale
+  // is the live on-screen "resized bigger" factor from applyLegendScale()
+  // -- both need to compound so the exported legend's content matches what
+  // resizing the box on screen actually shows, not just the box outline.
+  const s = scale * legendScale;
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = scale;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeRect(x, y, w, h);
+
+  const pad = 10 * s;
+  const lineH = 18 * s;
+  const fontSize = 11 * s;
+  let cursorY = y + 16 * s;
+  ctx.textBaseline = 'middle';
+
+  function section(title, entries, drawSwatch) {
+    if (!entries.length) return;
+    ctx.fillStyle = '#888';
+    ctx.font = `${fontSize * 0.85}px -apple-system, Helvetica, Arial, sans-serif`;
+    ctx.fillText(title.toUpperCase(), x + pad, cursorY);
+    cursorY += lineH * 0.8;
+    ctx.font = `${fontSize}px -apple-system, Helvetica, Arial, sans-serif`;
+    for (const e of entries) {
+      drawSwatch(e, x + pad + 6 * s, cursorY);
+      ctx.fillStyle = '#222';
+      ctx.fillText(e.label, x + pad + 26 * s, cursorY);
+      cursorY += lineH;
+    }
+  }
+
+  if (hasNodeLegend) section('Nodes', nodeEntries, (e, sx, sy) => drawShapeOnCanvas(ctx, e.shape, e.color, sx, sy, 5 * s));
+  if (hasSizeLegend) section('Sizes', sizeEntries, (e, sx, sy) => {
+    const r = Math.max(8, Math.min(36, e.size_px)) / 2;
+    drawShapeOnCanvas(ctx, 'circle', '#888', sx, sy, r * s);
+  });
+  if (hasEdgeLegend) section('Edges', edgeEntries, (e, sx, sy) => {
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = 2 * s;
+    ctx.setLineDash(e.style === 'dash' ? [4 * s, 2 * s] : e.style === 'dot' ? [1 * s, 2 * s] : []);
+    ctx.beginPath();
+    ctx.moveTo(sx - 6 * s, sy);
+    ctx.lineTo(sx + 6 * s, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  ctx.restore();
+}
+
+function render(data) {
+  hasNodeLegend = !!data.has_node_legend;
+  hasEdgeLegend = !!data.has_edge_legend;
+  hasSizeLegend = !!data.has_size_legend;
+
+  // See the long POSITION_SCALE comment just below in the `elements`
+  // array for why this is adaptive rather than a flat constant. Module-
+  // level (not local to render()) so saveNodeEdits()/inspectNode() can
+  // invert the SAME factor actually used for this network, not a fixed
+  // guess - both read it fresh off `window` rather than a closed-over
+  // local, since render() can re-run (e.g. importcoords()/edgeimport()
+  // round-trips aren't a concern here, but re-rendering after an
+  // in-page edit is) and each call's own scale must win for anything
+  // saved afterward.
+  const xs = data.nodes.map(n => n.x);
+  const ys = data.nodes.map(n => n.y);
+  const rawSpan = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1e-6);
+  const POSITION_SCALE = 1000 / rawSpan;
+  window.POSITION_SCALE = POSITION_SCALE;
+
+  const elements = [
+    // node/edge visuals (color, shape, size, edge width/style/arrow) are
+    // passed straight through from already-resolved values -- the canvas
+    // renders nwplot's node_options()/edge_options() decisions, it doesn't
+    // recompute them from raw attributes. color_group/shape_group/
+    // edgecolor_group are nwplot's own ncolor/nsymbol/edgecolor group
+    // indices, UI-invisible, carried through purely so importcoords()/
+    // edgeimport() can map an edited legend entry back to the right
+        // _getcolorstyle call site.
+    // POSITION_SCALE (computed just above the `elements` array - see
+    // below) replaces a flat *1000: nwplot's `size`/`width` are already
+    // calibrated in CSS-px terms against its OWN fixed internal plot
+    // region, completely independent of whatever coordinate system
+    // produced x/y (a force-directed layout's raw coordinates commonly
+    // span ~0-2; dagy's own nodexy() layered layout commonly spans
+    // ~0-40; nothing here can assume either). A flat *1000 was tried
+    // first and was wrong both directions: unscaled size against
+    // *1000'd position made every node sub-pixel-invisible (nwplot's own
+    // bug, confirmed on a plain nwrandom + force-directed layout, not
+    // just dagy's case - cytoscape's `preset` layout auto-fits/zooms to
+    // the position bounding box, so size and position must share a
+    // scale for that fit to render nodes at a sane size); scaling size
+    // by *1000 TOO then massively overshot for dagy's own wider
+    // coordinate range (giant overlapping blobs - confirmed directly).
+    // Normalizing position's own bounding box to a fixed ~1000-unit span
+    // regardless of its native scale keeps size (left untouched, at
+    // nwplot's real computed CSS-px value) a small, sane fraction of the
+    // canvas either way. `size'/`width' are never written back out
+    // anywhere (saveNodeEdits/saveEdgeEdits's CSVs carry only
+    // color/shape/position, per the sizeLegendState comment above -
+    // "size stays governed by the single size-factor slider, matching
+    // nwplot's own... model"), so leaving them at nwplot's real value
+    // needs no inverse anywhere the way position's own POSITION_SCALE
+    // does (see saveNodeEdits()/inspectNode() below).
+    ...data.nodes.map(n => ({
+      data: {
+        id: n.id, label: n.label, degree: n.degree, group: n.group,
+        group_label: n.group_label || n.group, shape_label: n.shape_label || n.shape,
+        color: rgbStringToHex(n.color), shape: n.shape, size: n.size,
+        color_group: n.color_group, shape_group: n.shape_group,
+        baseSize: n.size,   // undisturbed by the size-factor slider, so factor edits stay reversible
+        displayLabel: n.label || ''
+      },
+      position: { x: n.x * POSITION_SCALE, y: n.y * POSITION_SCALE }
+    })),
+    ...data.edges.map(e => ({
+      data: {
+        id: e.id, source: e.source, target: e.target,
+        edgegroup: e.edgegroup, edgegroup_label: e.edgegroup_label || e.edgegroup,
+        edgecolor_group: e.edgecolor_group,
+        color: rgbStringToHex(e.color), width: e.width, style: e.style,
+        baseWidth: e.width,   // undisturbed by the edge-width-factor slider, mirrors baseSize for nodes
+        arrow: e.arrow ? 'triangle' : 'none',
+        arrowColor: rgbStringToHex(e.color),   // starts matching this edge's own color; the Arrow color picker overrides all at once
+        arrowScale: 1,
+        recip: !!e.recip
+      }
+    }))
+  ];
+
+  if (cy) cy.destroy();
+
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: elements,
+    layout: { name: 'preset' },   // coordinates come pre-computed from Stata/Mata; cytoscape only renders + lets you drag
+    wheelSensitivity: 0.3,
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'width': 'data(size)',
+          'height': 'data(size)',
+          'shape': ele => STATA_TO_CY_SHAPE[ele.data('shape')] || 'ellipse',
+          'background-color': 'data(color)',
+          'border-width': 0,
+          'label': 'data(displayLabel)',
+          'font-size': 8,
+          'color': '#333',
+          'text-valign': 'top',
+          'text-margin-y': -4
+        }
+      },
+      {
+        selector: 'node:selected',
+        style: {
+          'border-width': 2.5,
+          'border-color': '#111',
+          'z-index': 999
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width': 'data(width)',
+          'line-color': 'data(color)',
+          'line-style': ele => STATA_TO_CY_LINESTYLE[ele.data('style')] || 'solid',
+          // matches nwplot's own default arcstyle(automatic): reciprocated
+          // (mutual) dyads curve apart so both directions stay visible
+          // instead of overlapping; asymmetric ties stay straight (also
+          // the cheaper case to render at scale, so straight stays the
+          // default for the common non-reciprocal case).
+          'curve-style': ele => ele.data('recip') ? 'bezier' : 'straight',
+          'target-arrow-shape': 'data(arrow)',
+          'target-arrow-color': 'data(arrowColor)',
+          'arrow-scale': 'data(arrowScale)'
+        }
+      },
+      {
+        // Easter egg (type "pacman" -- see setupPacmanEasterEgg below). A
+        // synthetic node, not part of NODE_DATA, added/removed at runtime --
+        // pie-1-background-size doubles as the mouth wedge, animated open/
+        // closed by toggling data(mouthSize) on an interval.
+        selector: '.nwedit-pacman',
+        style: {
+          'background-color': '#ffd700',
+          'width': 24, 'height': 24, 'shape': 'ellipse',
+          'border-width': 1, 'border-color': '#c9a400', 'z-index': 999,
+          'pie-size': '100%',
+          'pie-1-background-color': '#111',
+          'pie-1-background-size': 'data(mouthSize)',
+          'label': ''
+        }
+      }
+    ]
+  });
+
+  cy.on('tap', 'node:not(.nwedit-pacman)', evt => inspectNode(evt.target));
+  cy.on('tap', evt => { if (evt.target === cy) clearInspect(); });
+  // Size-legend swatches are drawn at base-px * cy.zoom() (currentSizeLegendPx)
+  // so they stay honest about actual on-screen node size as the user zooms;
+  // re-render both the sidebar rows and the floating legend on every zoom.
+  cy.on('zoom', () => { renderSizeLegendRows(); buildPlotLegend(); });
+
+  document.getElementById('counts').textContent =
+    `${data.nodes.length} nodes / ${data.edges.length} edges`;
+
+  clearInspect();
+  buildLegend(data);
+  buildEdgeLegend(data);
+  buildSizeLegend(data);
+  buildPlotLegend();
+  document.getElementById('sizeFactor').value = 1;
+  document.getElementById('sizeFactorLabel').textContent = "1.00× (mirrors nwplot's nodefactor())";
+  document.getElementById('edgeFactor').value = 1;
+  document.getElementById('edgeFactorLabel').textContent = "1.00× (mirrors nwplot's edgefactor())";
+  document.getElementById('arrowSizeFactor').value = 1;
+  document.getElementById('arrowSizeFactorLabel').textContent = '1.00× arrow size';
+  startFpsCounter();
+}
+
+// One legend row per distinct group key (in first-appearance order), matching
+// nwplot's own color()/symbol() model: a discrete value -> palette lookup
+// (_getcolorstyle in nwplot.ado), not a continuous ramp. Editing a row here
+// recolors/reshapes every node sharing that key, not just one node.
+function buildLegend(data) {
+  legendState = {};
+  const order = [];
+  for (const n of data.nodes) {
+    if (!(n.group in legendState)) {
+      legendState[n.group] = { color: rgbStringToHex(n.color), shape: n.shape, label: n.group_label || n.group };
+      order.push(n.group);
+    }
+  }
+
+  const container = document.getElementById('legendRows');
+  container.innerHTML = '';
+  for (const key of order) {
+    const state = legendState[key];
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+
+    const label = document.createElement('div');
+    label.className = 'key';
+    label.textContent = state.label;
+    label.title = state.label;
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = state.color;
+    colorInput.oninput = () => applyLegendEdit(key, 'color', colorInput.value);
+
+    const shapeSelect = document.createElement('select');
+    for (const s of SHAPE_CHOICES) {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = s;
+      if (s === state.shape) opt.selected = true;
+      shapeSelect.appendChild(opt);
+    }
+    shapeSelect.onchange = () => applyLegendEdit(key, 'shape', shapeSelect.value);
+
+    row.appendChild(label);
+    row.appendChild(colorInput);
+    row.appendChild(shapeSelect);
+    container.appendChild(row);
+  }
+}
+
+function applyLegendEdit(key, prop, value) {
+  legendState[key][prop] = value;
+  cy.nodes(`[group = "${key}"]`).forEach(n => n.data(prop, value));
+  if (selectedNodeId) {
+    const n = cy.getElementById(selectedNodeId);
+    if (n.length && n.data('group') === key) inspectNode(n);
+  }
+  buildPlotLegend();
+}
+
+// Same discrete-legend pattern as buildLegend/applyLegendEdit, for edges --
+// edge color/pattern resolve the same way node color/shape do (_getcolorstyle
+// again, just the edgecolorpalette/edgepatternpalette sub-options instead of
+// colorpalette/symbolpalette), so it's the identical mechanism, not a
+// separate concept.
+function buildEdgeLegend(data) {
+  edgeLegendState = {};
+  const order = [];
+  for (const e of data.edges) {
+    if (!(e.edgegroup in edgeLegendState)) {
+      edgeLegendState[e.edgegroup] = { color: rgbStringToHex(e.color), style: e.style, label: e.edgegroup_label || e.edgegroup };
+      order.push(e.edgegroup);
+    }
+  }
+
+  const container = document.getElementById('edgeLegendRows');
+  container.innerHTML = '';
+  for (const key of order) {
+    const state = edgeLegendState[key];
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+
+    const label = document.createElement('div');
+    label.className = 'key';
+    label.textContent = state.label;
+    label.title = state.label;
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = state.color;
+    colorInput.oninput = () => applyEdgeLegendEdit(key, 'color', colorInput.value);
+
+    const styleSelect = document.createElement('select');
+    for (const s of EDGE_STYLE_CHOICES) {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = s;
+      if (s === state.style) opt.selected = true;
+      styleSelect.appendChild(opt);
+    }
+    styleSelect.onchange = () => applyEdgeLegendEdit(key, 'style', styleSelect.value);
+
+    row.appendChild(label);
+    row.appendChild(colorInput);
+    row.appendChild(styleSelect);
+    container.appendChild(row);
+  }
+}
+
+function applyEdgeLegendEdit(key, prop, value) {
+  edgeLegendState[key][prop] = value;
+  cy.edges(`[edgegroup = "${key}"]`).forEach(e => e.data(prop, value));
+  buildPlotLegend();
+}
+
+// Read-only, unlike buildLegend/buildEdgeLegend above -- there's no per-key
+// override to edit here (real per-node size stays governed by the single
+// "Node size factor" slider right above this section; sizeLegendState is
+// just a fixed display list nwplot.ado already resolved). Hidden entirely
+// via the `hidden' attribute rather than an empty section, matching the
+// on-canvas legend's own has_size_legend gate (buildPlotLegend).
+function buildSizeLegend(data) {
+  sizeLegendState = (data.size_legend || []).map(e => ({ label: e.label, size_px: e.size_px }));
+  document.getElementById('sizeLegendSection').hidden = !hasSizeLegend || sizeLegendState.length === 0;
+  renderSizeLegendRows();
+}
+
+// Split from buildSizeLegend so the cy 'zoom' handler (see render()) can
+// cheaply re-draw the sidebar swatches at the new zoom level without
+// re-parsing NODE_DATA -- sizeLegendState itself doesn't change with zoom,
+// only how big each swatch is drawn (currentSizeLegendPx).
+function renderSizeLegendRows() {
+  const container = document.getElementById('sizeLegendRows');
+  container.innerHTML = '';
+  for (const e of sizeLegendState) {
+    const row = document.createElement('div');
+    row.className = 'size-legend-row';
+
+    const swatch = document.createElement('div');
+    swatch.className = 'swatch';
+    swatch.innerHTML = sizeSwatchSvg(currentSizeLegendPx(e.size_px));
+
+    const label = document.createElement('div');
+    label.className = 'key';
+    label.textContent = e.label;
+    label.title = e.label;
+
+    row.appendChild(swatch);
+    row.appendChild(label);
+    container.appendChild(row);
+  }
+}
+
+function applySizeFactor(factor) {
+  document.getElementById('sizeFactorLabel').textContent =
+    factor.toFixed(2) + "× (mirrors nwplot's nodefactor())";
+  cy.nodes().not('.nwedit-pacman').forEach(n => n.data('size', n.data('baseSize') * factor));
+  if (selectedNodeId) {
+    const n = cy.getElementById(selectedNodeId);
+    if (n.length) inspectNode(n);
+  }
+}
+
+function applyEdgeFactor(factor) {
+  document.getElementById('edgeFactorLabel').textContent =
+    factor.toFixed(2) + "× (mirrors nwplot's edgefactor())";
+  cy.edges().forEach(e => e.data('width', e.data('baseWidth') * factor));
+}
+
+function applyArrowSizeFactor(factor) {
+  document.getElementById('arrowSizeFactorLabel').textContent = factor.toFixed(2) + '× arrow size';
+  cy.edges().forEach(e => e.data('arrowScale', factor));
+}
+
+function applyArrowColor(hex) {
+  cy.edges().forEach(e => e.data('arrowColor', hex));
+}
+
+function inspectNode(node) {
+  selectedNodeId = node.id();
+  const d = node.data();
+  const pos = node.position();
+  document.getElementById('inspect').innerHTML = `
+    <div class="row"><div class="label">ID</div><div class="value">${d.id}</div></div>
+    <div class="row"><div class="label">Label</div><div class="value">${d.label ?? ''}</div></div>
+    <div class="row"><div class="label">Degree</div><div class="value">${d.degree ?? ''}</div></div>
+    <div class="row"><div class="label">Group</div><div class="value">${d.group_label ?? d.group ?? ''}</div></div>
+    <div class="row"><div class="label">Color / shape</div><div class="value">${d.color ?? ''} / ${d.shape ?? ''}</div></div>
+    <div class="row"><div class="label">Size</div><div class="value">${(+d.size).toFixed(1)}px</div></div>
+    <div class="row"><div class="label">Position</div><div class="value">${(pos.x / (window.POSITION_SCALE || 1000)).toFixed(1)}, ${(pos.y / (window.POSITION_SCALE || 1000)).toFixed(1)}</div></div>
+  `;
+}
+
+function clearInspect() {
+  selectedNodeId = null;
+  document.getElementById('inspect').innerHTML = '<div class="empty">Click a node to inspect it.</div>';
+}
+
+// CSV, not JSON: Stata has no native JSON parser to read this back with, but
+// import delimited reads CSV natively -- see importcoords()/edgeimport() in
+// nwplot.ado. node_row/edge_row are a self-check only -- importcoords() keys
+// strictly by physical row position (row order is nwplot's only node-identity
+// concept anywhere in the file), not by this column's value.
+function csvEscape(v) {
+  const s = String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function saveNodeEdits() {
+  if (!cy) return;
+  const nodefactor = parseFloat(document.getElementById('sizeFactor').value);
+  const edgefactor = parseFloat(document.getElementById('edgeFactor').value);
+  const header = ['node_row','x','y','color','shape','color_group','shape_group','nodefactor','edgefactor'];
+  const rows = [header.join(',')];
+  // .not('.nwedit-pacman'): the Easter egg's synthetic node (see
+  // setupPacmanEasterEgg) is not part of NODE_DATA and must never leak into
+  // the row-order-keyed CSV that importcoords() reads back into Stata.
+  cy.nodes().not('.nwedit-pacman').forEach((n, i) => {
+    const p = n.position();
+    const d = n.data();
+    rows.push([
+      i + 1,
+      (p.x / (window.POSITION_SCALE || 1000)).toFixed(5),
+      (p.y / (window.POSITION_SCALE || 1000)).toFixed(5),
+      csvEscape(hexToRgbString(d.color)),
+      csvEscape(d.shape),
+      d.color_group,
+      d.shape_group,
+      nodefactor,
+      edgefactor
+    ].join(','));
+  });
+  downloadText(rows.join('\n'), 'nwedit_nodes.csv', 'text/csv');
+}
+
+function saveEdgeEdits() {
+  if (!cy) return;
+  const header = ['edge_row','color','style','edgecolor_group'];
+  const rows = [header.join(',')];
+  cy.edges().forEach((e, i) => {
+    const d = e.data();
+    rows.push([i + 1, csvEscape(hexToRgbString(d.color)), csvEscape(d.style), d.edgecolor_group].join(','));
+  });
+  downloadText(rows.join('\n'), 'nwedit_edges.csv', 'text/csv');
+}
+
+// A `download`-attribute anchor click works for free in an ordinary browser
+// tab (the `view browse` fallback path) but silently no-ops in the bare
+// WKWebView this page also runs in when launched chromeless (nwedit_viewer
+// on macOS) -- no Safari/Chrome chrome, no download delegate configured,
+// confirmed directly (Save/Export did nothing when clicked there, same
+// buttons worked fine under `view browse`). When nwedit_viewer.mm's own
+// WKScriptMessageHandler bridge is present, route through it instead -- it
+// shows a real native NSSavePanel and writes the file itself. Windows/
+// Linux nwedit_viewer builds (WebView2 / WebKitGTK) don't register this
+// same "nwedit" handler yet, so those still fall through to the anchor
+// path below, which has the identical no-op problem there until each
+// platform's own bridge is added.
+const hasNativeSave = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nwedit);
+
+function utf8ToBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+function downloadText(text, filename, mime) {
+  if (hasNativeSave) {
+    window.webkit.messageHandlers.nwedit.postMessage({ filename, dataBase64: utf8ToBase64(text) });
+    return;
+  }
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportPng() {
+  if (!cy) return;
+  // ResizeObserver batches its callback onto the next animation frame, so a
+  // native-handle resize-drag released and immediately followed by a click
+  // on this button can in principle race ahead of that callback, leaving
+  // legendScale stale for one frame. Force a synchronous recompute here so
+  // the export always reflects the box's actual current size regardless.
+  applyLegendScale(document.getElementById('plotLegend').getBoundingClientRect().width);
+
+  // cy.png() is built into cytoscape core (no extra dependency) -- vector
+  // export (SVG, matching nwplot's own export_options) would need the
+  // separate cytoscape-svg extension, deferred for now per PNG-is-enough.
+  //
+  // full:false (not full:true) deliberately here: it rasterizes exactly the
+  // current on-screen viewport of #cy at its own pixel dimensions, which is
+  // the only way the legend box's on-screen position can be mapped onto the
+  // exported image pixel-for-pixel below -- full:true instead crops tightly
+  // to the graph elements' own bounding box, a different rectangle that the
+  // legend's screen coordinates wouldn't line up with.
+  const scale = 2;
+  const cyRect = document.getElementById('cy').getBoundingClientRect();
+  const legendRect = document.getElementById('plotLegend').getBoundingClientRect();
+  const graphBlob = cy.png({ output: 'blob', full: false, scale, bg: '#ffffff' });
+
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+
+    const lx = (legendRect.left - cyRect.left) * scale;
+    const ly = (legendRect.top - cyRect.top) * scale;
+    const lw = legendRect.width * scale;
+    const lh = legendRect.height * scale;
+    if (lx + lw > 0 && ly + lh > 0 && lx < canvas.width && ly < canvas.height) {
+      drawLegendOnCanvas(ctx, lx, ly, lw, lh, scale);
+    }
+
+    if (hasNativeSave) {
+      // toDataURL() gives base64 synchronously, no FileReader roundtrip
+      // needed -- same native-bridge path as downloadText() above, see its
+      // comment for why the plain toBlob()+anchor path below no-ops here.
+      const dataUrl = canvas.toDataURL('image/png');
+      window.webkit.messageHandlers.nwedit.postMessage({
+        filename: 'nwedit_export.png',
+        dataBase64: dataUrl.slice(dataUrl.indexOf(',') + 1)
+      });
+      return;
+    }
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nwedit_export.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  };
+  img.src = URL.createObjectURL(graphBlob);
+}
+
+// Rough FPS readout during drag, to make performance at scale visible
+// rather than a subjective "feels fine" call.
+function startFpsCounter() {
+  let last = performance.now();
+  let frames = 0;
+  const fpsEl = document.getElementById('fps');
+  function tick(now) {
+    frames++;
+    if (now - last >= 500) {
+      const fps = Math.round((frames * 1000) / (now - last));
+      fpsEl.textContent = fps + ' fps';
+      frames = 0;
+      last = now;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// Shared by every Easter egg below: a toast (bottom-left, auto-fades) for
+// their start/stop/win/lose messages, and a registry each egg's IIFE fills
+// in with its own `stop` so starting one can cleanly stop the other --
+// both listen globally on keydown for their own trigger word, and running
+// two overlays at once would look broken.
+function showToast(msg) {
+  let toast = document.getElementById('nwedit-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'nwedit-toast';
+    toast.style.cssText = 'position:absolute;bottom:16px;left:16px;background:#222;color:#fff;padding:8px 14px;border-radius:4px;font-size:12px;z-index:100;opacity:0;transition:opacity .3s;pointer-events:none;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+}
+const EasterEggControl = {};
+
+// Easter egg: type "pacman" anywhere on the page (not while a text field/
+// dropdown has focus) to spawn a Pac-Man that roams the network along its
+// real edges, eating each node it reaches. Purely visual/reversible --
+// see the .not('.nwedit-pacman') guards in saveNodeEdits()/applySizeFactor()
+// above, which keep this synthetic node out of anything that round-trips
+// back into Stata. Type "pacman" again to stop it early.
+(function setupPacmanEasterEgg() {
+  const triggerWord = 'pacman';
+  let buffer = '';
+  let active = false;
+  let stepTimer = null;
+  let chompTimer = null;
+  let visitedInLap = new Set();
+  let stepsRemaining = 0;
+
+  document.addEventListener('keydown', e => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+
+    if (active && e.key === 'Escape') { stopPacman(); return; }
+
+    buffer = (buffer + e.key.toLowerCase()).slice(-triggerWord.length);
+    if (buffer === triggerWord) {
+      buffer = '';
+      if (active) stopPacman();
+      else { if (EasterEggControl.spaceinvaders) EasterEggControl.spaceinvaders.stop(); startPacman(); }
+    }
+  });
+
+  function startPacman() {
+    if (!cy) return;
+    const nodes = cy.nodes().not('.nwedit-pacman');
+    if (nodes.length === 0) return;
+    active = true;
+    const startNode = nodes[Math.floor(Math.random() * nodes.length)];
+    const pac = cy.add({
+      group: 'nodes',
+      data: { id: '__pacman__', mouthSize: 20 },
+      position: { x: startNode.position('x'), y: startNode.position('y') },
+      classes: 'nwedit-pacman',
+      selectable: false,
+      grabbable: false
+    });
+    let mouthOpen = true;
+    chompTimer = setInterval(() => {
+      if (!cy || pac.removed()) { clearInterval(chompTimer); return; }
+      mouthOpen = !mouthOpen;
+      pac.data('mouthSize', mouthOpen ? 22 : 2);
+    }, 160);
+    visitedInLap = new Set([startNode.id()]);
+    stepsRemaining = Math.min(60, nodes.length * 3);
+    eatNode(startNode);
+    step(startNode);
+  }
+
+  function step(currentNode) {
+    if (!active || stepsRemaining <= 0) { finishPacman(); return; }
+    stepsRemaining--;
+    const neighbors = currentNode.neighborhood('node').not('.nwedit-pacman');
+    if (neighbors.length === 0) { finishPacman(); return; }
+    let candidates = neighbors.filter(n => !visitedInLap.has(n.id()));
+    if (candidates.length === 0) {
+      visitedInLap = new Set();   // every neighbor already seen this lap -- reset so it keeps roaming instead of stalling
+      candidates = neighbors;
+    }
+    const next = candidates[Math.floor(Math.random() * candidates.length)];
+    visitedInLap.add(next.id());
+    const pac = cy.getElementById('__pacman__');
+    const dx = next.position('x') - currentNode.position('x');
+    const dy = next.position('y') - currentNode.position('y');
+    const duration = Math.max(200, Math.min(900, Math.hypot(dx, dy) * 1.2));
+    pac.animate({ position: { x: next.position('x'), y: next.position('y') } }, {
+      duration,
+      easing: 'linear',
+      complete: () => {
+        if (!active) return;
+        eatNode(next);
+        stepTimer = setTimeout(() => step(next), 120);
+      }
+    });
+  }
+
+  function eatNode(node) {
+    playChompSound();
+    const origColor = node.data('color');
+    const baseSize = node.data('size');
+    node.animate({ style: { 'background-color': '#fff8dc' } }, { duration: 90 });
+    node.animate({ style: { 'background-color': origColor } }, { duration: 90, delay: 90 });
+    node.animate({ style: { width: baseSize * 1.4, height: baseSize * 1.4 } }, {
+      duration: 110,
+      complete: () => node.animate({ style: { width: baseSize, height: baseSize } }, { duration: 140 })
+    });
+  }
+
+  function finishPacman() {
+    stopPacman();
+    showToast('Waka waka! \u{1F47B} Type "pacman" for another round.');
+  }
+
+  // Also snaps every real node straight back to its authoritative color/
+  // size, same "immediately revert, nothing left mid-tween" contract
+  // Escape gets from setupSpaceInvadersEasterEgg's own stopGame() -- eatNode
+  // queues several .animate() calls per bitten node (flash color, then
+  // revert; grow, then shrink), and clearTimeout/clearInterval above only
+  // stop scheduling pacman's NEXT step, they don't touch a node's own
+  // still-queued cytoscape animation, which would otherwise keep playing
+  // out (visibly faded/off-color/off-size) for a moment after Escape.
+  function stopPacman() {
+    active = false;
+    if (stepTimer) clearTimeout(stepTimer);
+    if (chompTimer) clearInterval(chompTimer);
+    if (cy) {
+      const pac = cy.getElementById('__pacman__');
+      if (pac.length) pac.remove();
+      cy.nodes().not('.nwedit-pacman').forEach(n => {
+        n.stop(true);
+        n.style({ 'background-color': n.data('color'), width: n.data('size'), height: n.data('size') });
+      });
+    }
+  }
+
+  function playChompSound() {
+    try {
+      const ctx = playChompSound._ctx || (playChompSound._ctx = new (window.AudioContext || window.webkitAudioContext)());
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(480, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.05, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.09);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch (e) { /* Web Audio unavailable -- purely decorative, skip silently */ }
+  }
+
+  EasterEggControl.pacman = { stop: stopPacman };
+})();
+
+// Easter egg: type "space" anywhere on the page (not while a text field/
+// dropdown has focus) to start a Space-Invaders-style mini-game overlaid on
+// the network -- arrow keys move a ship along the bottom of the canvas,
+// spacebar fires upward, and every real node is a target. A hit only fades
+// the node's `opacity` style to 0; the node itself is never removed from
+// cy or NODE_DATA, so nothing here can leak into saveNodeEdits()'s CSV
+// (which never reads opacity) -- same "purely visual/reversible" contract
+// as setupPacmanEasterEgg above. Any way out (win, lose, manual re-trigger,
+// or Escape) restores every node's opacity before returning control.
+(function setupSpaceInvadersEasterEgg() {
+  const triggerWord = 'space';
+  let buffer = '';
+  let active = false;
+  let rafId = null;
+  let canvas = null, ctx = null;
+  let shipX = 0;
+  const shipW = 28, shipH = 16, shipSpeed = 6;
+  let movingLeft = false, movingRight = false;
+  let bullets = [];       // player bullets: {x, y}, screen px, same space as node.renderedPosition()
+  let enemyBullets = [];  // invader bullets: {x, y}
+  let lives = 3;
+  let score = 0;
+  let aliveNodes = [];    // plain array snapshot of cy nodes at round start (not a live cy collection)
+  let lastEnemyShot = 0;
+
+  // Formation movement: the whole network zooms out 50% and drifts as one
+  // "attacking ship" via cy's own pan/zoom (not per-node position edits),
+  // so hit detection needs zero changes -- nodeScreenPos() already reads
+  // node.renderedPosition()/cy.zoom() fresh every frame, which already
+  // bakes in whatever pan/zoom is currently set. Restoring is just as
+  // simple: put the original pan/zoom back, no per-node bookkeeping.
+  let baseZoom = 1, baseX = 0, baseY = 0;   // the view exactly as the user left it, restored on stopGame()
+  let centerPanX = 0, centerPanY = 0;       // pan right after the shrink-in settles; panOffsetX is a delta from this
+  let formationReady = false;               // true once the shrink-in animation completes and drifting may begin
+  let panOffsetX = 0, panDir = 1;
+  const PAN_SPEED = 1.1;
+  let PAN_BOUND = 140;                      // px/frame drift, and how far it marches before turning at the "wall" -- mirrors the original arcade's own bounded left-right march; sized off the actual container width in startGame() below, not left as this fixed fallback
+  let pauseUntil = 0;                       // now < pauseUntil: mid an abrupt full stop
+  let dodgeCooldownUntil = 0;               // throttles evasive jinks so they read as occasional, not a hitbox that can't be beaten
+  let randomTurnCooldownUntil = 0;          // throttles the unprovoked direction reversals below (separate from dodging, which only reverses in response to incoming fire)
+  let prevUserPanningEnabled = true, prevUserZoomingEnabled = true;
+
+  document.addEventListener('keydown', e => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+
+    if (active) {
+      if (e.key === 'ArrowLeft') { movingLeft = true; e.preventDefault(); }
+      else if (e.key === 'ArrowRight') { movingRight = true; e.preventDefault(); }
+      else if (e.key === ' ' || e.key === 'Spacebar') { fireBullet(); e.preventDefault(); }
+      else if (e.key === 'Escape') { stopGame(); return; }
+    }
+
+    buffer = (buffer + e.key.toLowerCase()).slice(-triggerWord.length);
+    if (buffer === triggerWord) {
+      buffer = '';
+      if (active) stopGame();
+      else { if (EasterEggControl.pacman) EasterEggControl.pacman.stop(); startGame(); }
+    }
+  });
+  document.addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft') movingLeft = false;
+    else if (e.key === 'ArrowRight') movingRight = false;
+  });
+  window.addEventListener('resize', () => {
+    if (!active || !canvas) return;
+    const r = document.getElementById('cy').getBoundingClientRect();
+    canvas.width = r.width;
+    canvas.height = r.height;
+  });
+
+  function startGame() {
+    if (!cy) return;
+    aliveNodes = cy.nodes().not('.nwedit-pacman').toArray();
+    if (aliveNodes.length === 0) return;
+    active = true;
+    lives = 3;
+    score = 0;
+    bullets = [];
+    enemyBullets = [];
+    lastEnemyShot = performance.now();
+
+    canvas = document.getElementById('siCanvas');
+    const cyRect = document.getElementById('cy').getBoundingClientRect();
+    canvas.width = cyRect.width;
+    canvas.height = cyRect.height;
+    canvas.style.display = 'block';
+    ctx = canvas.getContext('2d');
+    shipX = canvas.width / 2;
+
+    // Snapshot the user's own view so stopGame() can put it back exactly,
+    // then disable manual pan/zoom for the round -- the formation drives
+    // the viewport itself every frame below, and fighting the user's own
+    // mouse-wheel/drag input over the same pan/zoom would just look broken.
+    baseZoom = cy.zoom();
+    baseX = cy.pan().x;
+    baseY = cy.pan().y;
+    prevUserPanningEnabled = cy.userPanningEnabled();
+    prevUserZoomingEnabled = cy.userZoomingEnabled();
+    cy.userPanningEnabled(false);
+    cy.userZoomingEnabled(false);
+
+    formationReady = false;
+    panOffsetX = 0;
+    panDir = 1;
+    pauseUntil = 0;
+    dodgeCooldownUntil = 0;
+    randomTurnCooldownUntil = 0;
+    // Half the container width (minus a margin so the shrunk network never
+    // marches fully off-screen) -- a fixed px bound looked like it only
+    // ever swept a narrow central band on a normal-sized window, since it
+    // never scaled with how wide the actual plot area is.
+    PAN_BOUND = Math.max(100, canvas.width / 2 - 60);
+    // The "attacking ship" warps in: whole network shrinks to half size,
+    // centered on the viewport -- once that settles, loop()'s
+    // updateFormation() takes over and starts the left-right march.
+    cy.animate({ zoom: baseZoom * 0.5 }, {
+      duration: 350,
+      complete: () => {
+        centerPanX = cy.pan().x;
+        centerPanY = cy.pan().y;
+        formationReady = true;
+      }
+    });
+
+    showToast('Space Invaders! ← → move, SPACE to fire. Type "space" or Esc to stop.');
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function fireBullet() {
+    if (!active || !canvas) return;
+    bullets.push({ x: shipX, y: canvas.height - shipH - 4 });
+  }
+
+  // renderedPosition() is already in the same #cy-container pixel space
+  // that getBoundingClientRect() gives siCanvas (both track cy's own pan/
+  // zoom/resize, since siCanvas is sized off that same rect), so bullets
+  // hit nodes correctly even if the user panned or zoomed before/during a
+  // round. Radius matches currentSizeLegendPx's own base*zoom convention.
+  function nodeScreenPos(node) {
+    const p = node.renderedPosition();
+    const r = Math.max(6, (node.data('size') * cy.zoom()) / 2);
+    return { x: p.x, y: p.y, r };
+  }
+
+  // Drives the whole network as one evasive "attacking ship" via cy's pan
+  // -- an oscillating left-right march (bounded by PAN_BOUND, turning
+  // around at each "wall" like the original arcade formation) that
+  // randomly freezes mid-step (pauseUntil) for that abrupt-stop feel, and
+  // that jinks -- reverses direction on the spot -- when a player bullet
+  // is about to connect, so it isn't a stationary target once it's moving.
+  function updateFormation(now) {
+    if (!formationReady) return;
+    if (now < pauseUntil) return;
+
+    // Small per-frame chance of a fresh abrupt full stop -- independent of
+    // the bounded march below, so stops can happen mid-run, not just at
+    // the turnaround points.
+    if (Math.random() < 0.004) {
+      pauseUntil = now + 200 + Math.random() * 500;
+      return;
+    }
+
+    // Unprovoked sudden reversal -- makes the march itself erratic (not
+    // just the boundary turnaround/evasive dodge below), so the formation
+    // reads as genuinely evasive even when no shot is currently closing in.
+    if (now > randomTurnCooldownUntil && Math.random() < 0.006) {
+      panDir *= -1;
+      randomTurnCooldownUntil = now + 600;
+    }
+
+    if (now > dodgeCooldownUntil) {
+      outer: for (const b of bullets) {
+        for (const node of aliveNodes) {
+          if (node.data('_siHit')) continue;
+          const pos = nodeScreenPos(node);
+          // "about to connect": roughly lined up in x and closing fast in
+          // y, not yet overlapping -- a dodge after the fact would be a
+          // teleport, not an evasion.
+          if (Math.abs(b.x - pos.x) < pos.r + 16 && b.y - pos.y < 90 && b.y - pos.y > -10) {
+            // Not a guaranteed dodge -- an evasive formation that can
+            // never be hit isn't a shooting game anymore.
+            if (Math.random() < 0.65) {
+              panDir *= -1;
+              dodgeCooldownUntil = now + 450;
+            }
+            break outer;
+          }
+        }
+      }
+    }
+
+    panOffsetX += panDir * PAN_SPEED;
+    if (panOffsetX > PAN_BOUND) { panOffsetX = PAN_BOUND; panDir = -1; }
+    else if (panOffsetX < -PAN_BOUND) { panOffsetX = -PAN_BOUND; panDir = 1; }
+    cy.pan({ x: centerPanX + panOffsetX, y: centerPanY });
+  }
+
+  function loop(now) {
+    if (!active) return;
+    if (movingLeft) shipX = Math.max(shipW / 2, shipX - shipSpeed);
+    if (movingRight) shipX = Math.min(canvas.width - shipW / 2, shipX + shipSpeed);
+
+    bullets.forEach(b => b.y -= 8);
+    bullets = bullets.filter(b => b.y > -10);
+    enemyBullets.forEach(b => b.y += 5);
+    enemyBullets = enemyBullets.filter(b => b.y < canvas.height + 10);
+
+    updateFormation(now);
+
+    for (const b of bullets) {
+      for (const node of aliveNodes) {
+        if (b.y < -50 || node.data('_siHit')) continue;
+        const pos = nodeScreenPos(node);
+        const dx = b.x - pos.x, dy = b.y - pos.y;
+        if (dx * dx + dy * dy < (pos.r + 4) * (pos.r + 4)) {
+          node.data('_siHit', true);
+          b.y = -100; // consume bullet without splicing mid-loop
+          score++;
+          explodeNode(node);
+        }
+      }
+    }
+
+    const shipY = canvas.height - shipH - 4;
+    for (const b of enemyBullets) {
+      if (Math.abs(b.x - shipX) < shipW / 2 && Math.abs(b.y - shipY) < shipH / 2) {
+        b.y = canvas.height + 100;
+        loseLife();
+      }
+    }
+
+    if (now - lastEnemyShot > 900) {
+      lastEnemyShot = now;
+      const remaining = aliveNodes.filter(n => !n.data('_siHit'));
+      if (remaining.length) {
+        const shooter = remaining[Math.floor(Math.random() * remaining.length)];
+        const pos = nodeScreenPos(shooter);
+        enemyBullets.push({ x: pos.x, y: pos.y });
+      }
+    }
+
+    draw();
+
+    if (aliveNodes.every(n => n.data('_siHit'))) { winGame(); return; }
+    if (lives <= 0) { loseGame(); return; }
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function explodeNode(node) {
+    playZapSound();
+    const origColor = node.data('color');
+    node.animate({ style: { 'background-color': '#fff' } }, { duration: 60 });
+    node.animate({ style: { 'background-color': origColor, opacity: 0 } }, { duration: 220, delay: 60 });
+  }
+
+  function loseLife() {
+    playHitSound();
+    lives--;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const shipY = canvas.height - shipH - 4;
+    ctx.fillStyle = '#2ecc71';
+    ctx.beginPath();
+    ctx.moveTo(shipX, shipY - shipH / 2);
+    ctx.lineTo(shipX - shipW / 2, shipY + shipH / 2);
+    ctx.lineTo(shipX + shipW / 2, shipY + shipH / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#2ecc71';
+    bullets.forEach(b => ctx.fillRect(b.x - 1.5, b.y - 6, 3, 10));
+    ctx.fillStyle = '#e74c3c';
+    enemyBullets.forEach(b => ctx.fillRect(b.x - 1.5, b.y - 6, 3, 10));
+    ctx.fillStyle = '#333';
+    ctx.font = '12px -apple-system, Helvetica, Arial, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`Score: ${score}   Lives: ${'❤'.repeat(Math.max(0, lives))}`, 8, 8);
+  }
+
+  function winGame() {
+    const finalScore = score;
+    stopGame();
+    showToast(`Network cleared! Score ${finalScore}. Type "space" for another round.`);
+  }
+
+  function loseGame() {
+    const finalScore = score;
+    stopGame();
+    showToast(`Game over -- score ${finalScore}. Type "space" to try again.`);
+  }
+
+  // Always restores every node's opacity/color AND the original pan/zoom,
+  // regardless of how the round ended (win, loss, manual re-trigger of
+  // "space", or Escape) -- there is no path out of this game that can
+  // leave the network shrunk, mid-drift, or a node faded/discolored.
+  // Both cy.viewport() and the node style sets below are applied directly
+  // rather than via .animate(), so Escape's "immediately revert" is
+  // actually immediate, not a few hundred ms of tween -- and n.stop(true)
+  // first clears explodeNode()'s own queued animation on a node hit right
+  // before the round ended, which would otherwise still play out
+  // afterward and re-fade/re-color that one node despite this reset.
+  function stopGame() {
+    active = false;
+    formationReady = false;
+    movingLeft = movingRight = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (canvas) canvas.style.display = 'none';
+    bullets = [];
+    enemyBullets = [];
+    aliveNodes.forEach(n => {
+      n.data('_siHit', false);
+      n.stop(true);
+      n.style({ 'background-color': n.data('color'), opacity: 1 });
+    });
+    if (cy) {
+      cy.viewport({ zoom: baseZoom, pan: { x: baseX, y: baseY } });
+      cy.userPanningEnabled(prevUserPanningEnabled);
+      cy.userZoomingEnabled(prevUserZoomingEnabled);
+    }
+  }
+
+  function playZapSound() { playTone(880, 220, 0.05); }
+  function playHitSound() { playTone(120, 90, 0.08); }
+
+  function playTone(freq, toFreq, gainLevel) {
+    try {
+      const actx = playTone._ctx || (playTone._ctx = new (window.AudioContext || window.webkitAudioContext)());
+      const osc = actx.createOscillator();
+      const gain = actx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, actx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(40, toFreq), actx.currentTime + 0.08);
+      gain.gain.setValueAtTime(gainLevel, actx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.09);
+      osc.connect(gain).connect(actx.destination);
+      osc.start();
+      osc.stop(actx.currentTime + 0.1);
+    } catch (e) { /* Web Audio unavailable -- purely decorative, skip silently */ }
+  }
+
+  EasterEggControl.spaceinvaders = { stop: stopGame };
+})();
+
+document.getElementById('saveNodesBtn').onclick = saveNodeEdits;
+document.getElementById('saveEdgesBtn').onclick = saveEdgeEdits;
+document.getElementById('exportBtn').onclick = exportPng;
+document.getElementById('sizeFactor').oninput = e => applySizeFactor(parseFloat(e.target.value));
+document.getElementById('edgeFactor').oninput = e => applyEdgeFactor(parseFloat(e.target.value));
+document.getElementById('arrowSizeFactor').oninput = e => applyArrowSizeFactor(parseFloat(e.target.value));
+document.getElementById('arrowColorPicker').oninput = e => applyArrowColor(e.target.value);
+
+enableLegendDrag();
+enableLegendResize();
+render(NODE_DATA);
+</script>
+
+</body>
+</html>
