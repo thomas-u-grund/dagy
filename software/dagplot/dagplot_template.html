@@ -191,7 +191,7 @@ __NWEDIT_CYTOSCAPE__
      node warning needed to). Works identically in the native viewer, `view
      browse`, or any other browser - see nwModal()/nwAlert()/nwConfirm()/
      nwPromptText() below. -->
-<div id="nwModalOverlay" hidden style="position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:300; display:flex; align-items:center; justify-content:center;">
+<div id="nwModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:300; align-items:center; justify-content:center;">
   <div style="background:#fff; border-radius:6px; padding:18px 20px; min-width:280px; max-width:360px; box-shadow:0 8px 30px rgba(0,0,0,0.3); font-size:13px;">
     <div id="nwModalMessage" style="margin-bottom:12px; color:#333; white-space:pre-wrap; line-height:1.4;"></div>
     <input id="nwModalInput" type="text" style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:14px; border:1px solid #ccc; border-radius:4px; font-size:13px;" hidden>
@@ -983,11 +983,11 @@ function nwModal({ message, withInput = false, inputValue = '', onlyOk = false }
     inputEl.hidden = !withInput;
     inputEl.value = inputValue;
     cancelBtn.hidden = onlyOk;
-    overlay.hidden = false;
+    overlay.style.display = 'flex';
     if (withInput) { inputEl.focus(); inputEl.select(); }
 
     function cleanup(result) {
-      overlay.hidden = true;
+      overlay.style.display = 'none';
       okBtn.onclick = null;
       cancelBtn.onclick = null;
       document.removeEventListener('keydown', keyHandler, true);
