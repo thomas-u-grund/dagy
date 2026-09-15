@@ -145,6 +145,11 @@ __NWEDIT_CYTOSCAPE__
     <input type="range" id="sizeFactor" min="0.25" max="3" step="0.05" value="1">
     <div id="sizeFactorLabel">1.00&times;</div>
   </div>
+  <div class="section">
+    <h3>Label font size</h3>
+    <input type="range" id="labelFontFactor" min="0.5" max="3" step="0.05" value="1">
+    <div id="labelFontFactorLabel">8px</div>
+  </div>
   <div class="section" id="sizeLegendSection" hidden>
     <h3>Node size legend</h3>
     <div id="sizeLegendRows"></div>
@@ -169,13 +174,31 @@ __NWEDIT_CYTOSCAPE__
     <div class="hint">Sets every arrowhead's color; each arrow starts matching its own edge's color.</div>
   </div>
   <div class="section" style="border-bottom:none; margin-bottom:0; padding-bottom:0;">
-    <h3>Node inspector</h3>
-    <div id="inspect"><div class="empty">Click a node to inspect it.</div></div>
-    <div class="hint">"Export DAG" (toolbar) saves your edits - added/deleted/moved
-      nodes and edges, and the Latent checkbox above - as a dagitty model file.
-      Reload it with <code>dagy import &lt;name&gt;, file("...") replace</code>.
+    <h3>Inspector</h3>
+    <div id="inspect"><div class="empty">Click a node or edge to inspect it.</div></div>
+    <div class="hint">"Export DAG" (toolbar) saves your edits - added/deleted/moved/
+      renamed nodes and edges, and the Latent checkbox above - as a dagitty model
+      file. Reload it with <code>dagy import &lt;name&gt;, file("...") replace</code>.
       A node with no edges at all has nothing to export it as (dagy's own DAGs
       are edge-lists) and is dropped on import - connect it to something first.</div>
+  </div>
+</div>
+
+<!-- In-page replacement for window.alert()/confirm()/prompt() - the native
+     macOS viewer (native/dagplot_viewer.mm) is a bare WKWebView with no
+     WKUIDelegate, so those never show anything there (confirmed: nothing in
+     this file called them before Add node/Add edge/Export DAG's isolated-
+     node warning needed to). Works identically in the native viewer, `view
+     browse`, or any other browser - see nwModal()/nwAlert()/nwConfirm()/
+     nwPromptText() below. -->
+<div id="nwModalOverlay" hidden style="position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:300; display:flex; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:6px; padding:18px 20px; min-width:280px; max-width:360px; box-shadow:0 8px 30px rgba(0,0,0,0.3); font-size:13px;">
+    <div id="nwModalMessage" style="margin-bottom:12px; color:#333; white-space:pre-wrap; line-height:1.4;"></div>
+    <input id="nwModalInput" type="text" style="width:100%; box-sizing:border-box; padding:6px 8px; margin-bottom:14px; border:1px solid #ccc; border-radius:4px; font-size:13px;" hidden>
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button id="nwModalCancel" style="padding:6px 14px; border:1px solid #ccc; border-radius:4px; background:#fff; cursor:pointer; font-size:13px;">Cancel</button>
+      <button id="nwModalOk" style="padding:6px 14px; border:1px solid #1a73e8; border-radius:4px; background:#1a73e8; color:#fff; cursor:pointer; font-size:13px;">OK</button>
+    </div>
   </div>
 </div>
 
@@ -196,6 +219,7 @@ let hasNodeLegend = true;
 let hasEdgeLegend = true;
 let hasSizeLegend = true;   // independent of hasNodeLegend -- size and color/shape are separate legend dimensions on the real static plot too (see nwplot.ado's own `_nwedit_hassizelegend' comment)
 let selectedNodeId = null;
+let selectedEdgeId = null;
 
 // Stata's own vocabulary end to end (msymbol names / linepatternstyle names),
 // not cytoscape's -- these are exactly what color()/symbol()/edgecolor()'s
@@ -522,6 +546,8 @@ function render(data) {
         color_group: n.color_group, shape_group: n.shape_group,
         baseSize: n.size,   // undisturbed by the size-factor slider, so factor edits stay reversible
         displayLabel: n.label || '',
+        baseFontSize: 8,   // mirrors baseSize - undisturbed by the label-font-size slider
+        labelFontSize: 8,
         // dagplot's own JSON has no explicit "is this node latent" field -
         // inferred from dagy's own "unobserved" role label instead, so a
         // node that was already latent round-trips as latent on Export DAG
@@ -562,7 +588,7 @@ function render(data) {
           'background-color': 'data(color)',
           'border-width': 0,
           'label': 'data(displayLabel)',
-          'font-size': 8,
+          'font-size': 'data(labelFontSize)',
           'color': '#333',
           'text-valign': 'top',
           'text-margin-y': -4
@@ -637,6 +663,10 @@ function render(data) {
     }
     inspectNode(evt.target);
   });
+  cy.on('tap', 'edge', evt => {
+    if (editMode) return;   // add-node/add-edge mode ignores edge taps
+    inspectEdge(evt.target);
+  });
   cy.on('tap', evt => {
     if (evt.target !== cy) return;
     if (editMode === 'addnode') { addNodeAt(evt.position); return; }
@@ -657,6 +687,8 @@ function render(data) {
   buildPlotLegend();
   document.getElementById('sizeFactor').value = 1;
   document.getElementById('sizeFactorLabel').textContent = "1.00×";
+  document.getElementById('labelFontFactor').value = 1;
+  document.getElementById('labelFontFactorLabel').textContent = "8.0px";
   document.getElementById('edgeFactor').value = 1;
   document.getElementById('edgeFactorLabel').textContent = "1.00×";
   document.getElementById('arrowSizeFactor').value = 1;
@@ -829,6 +861,12 @@ function applyEdgeFactor(factor) {
   cy.edges().forEach(e => e.data('width', e.data('baseWidth') * factor));
 }
 
+function applyLabelFontFactor(factor) {
+  const px = 8 * factor;
+  document.getElementById('labelFontFactorLabel').textContent = px.toFixed(1) + 'px';
+  cy.nodes().not('.nwedit-pacman').forEach(n => n.data('labelFontSize', (n.data('baseFontSize') || 8) * factor));
+}
+
 function applyArrowSizeFactor(factor) {
   document.getElementById('arrowSizeFactorLabel').textContent = factor.toFixed(2) + '× arrow size';
   cy.edges().forEach(e => e.data('arrowScale', factor));
@@ -840,10 +878,14 @@ function applyArrowColor(hex) {
 
 function inspectNode(node) {
   selectedNodeId = node.id();
+  selectedEdgeId = null;
   const d = node.data();
   const pos = node.position();
   document.getElementById('inspect').innerHTML = `
-    <div class="row"><div class="label">Label</div><div class="value">${d.label ?? ''}</div></div>
+    <div class="row" style="display:flex; align-items:center; gap:6px;">
+      <div class="label" style="margin:0;">Label</div>
+      <input type="text" id="labelRename" value="${escapeHtml(d.label ?? '')}" style="flex:1; font-size:13px; padding:3px 5px; border:1px solid #ccc; border-radius:3px;">
+    </div>
     <div class="row"><div class="label">Degree</div><div class="value">${d.degree ?? ''}</div></div>
     <div class="row"><div class="label">Group</div><div class="value">${d.group_label ?? d.group ?? ''}</div></div>
     <div class="row"><div class="label">Color / shape</div><div class="value">${d.color ?? ''} / ${d.shape ?? ''}</div></div>
@@ -853,13 +895,50 @@ function inspectNode(node) {
       <div class="label" style="margin:0;">Latent</div>
       <input type="checkbox" id="latentToggle" ${d.latent ? 'checked' : ''}>
     </div>
+    <button id="inspectDeleteBtn" style="margin-top:6px; padding:5px 10px; border:1px solid #c33; border-radius:4px; background:#fff; color:#c33; cursor:pointer; font-size:12px;">Delete node</button>
   `;
   document.getElementById('latentToggle').onchange = e => node.data('latent', e.target.checked);
+  document.getElementById('inspectDeleteBtn').onclick = deleteSelected;
+  const renameInput = document.getElementById('labelRename');
+  const commitRename = async () => {
+    const newName = renameInput.value.trim();
+    if (newName === d.label) return;
+    if (!NODE_NAME_RE.test(newName)) {
+      await nwAlert('"' + newName + '" is not a valid node name.');
+      renameInput.value = d.label;
+      return;
+    }
+    if (cy.nodes().some(n => n.id() !== node.id() && n.data('label') === newName)) {
+      await nwAlert('A node named "' + newName + '" already exists.');
+      renameInput.value = d.label;
+      return;
+    }
+    node.data('label', newName);
+    node.data('displayLabel', newName);
+    inspectNode(node);   // refresh so d.label is current if the user re-edits
+  };
+  renameInput.onblur = commitRename;
+  renameInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); renameInput.blur(); } };
+}
+
+function inspectEdge(edge) {
+  selectedEdgeId = edge.id();
+  selectedNodeId = null;
+  const d = edge.data();
+  const srcLabel = cy.getElementById(d.source).data('label') || d.source;
+  const tgtLabel = cy.getElementById(d.target).data('label') || d.target;
+  document.getElementById('inspect').innerHTML = `
+    <div class="row"><div class="label">Edge</div><div class="value">${escapeHtml(srcLabel)} &rarr; ${escapeHtml(tgtLabel)}</div></div>
+    <div class="row"><div class="label">Color</div><div class="value">${d.color ?? ''}</div></div>
+    <button id="inspectDeleteBtn" style="margin-top:6px; padding:5px 10px; border:1px solid #c33; border-radius:4px; background:#fff; color:#c33; cursor:pointer; font-size:12px;">Delete edge</button>
+  `;
+  document.getElementById('inspectDeleteBtn').onclick = deleteSelected;
 }
 
 function clearInspect() {
   selectedNodeId = null;
-  document.getElementById('inspect').innerHTML = '<div class="empty">Click a node to inspect it.</div>';
+  selectedEdgeId = null;
+  document.getElementById('inspect').innerHTML = '<div class="empty">Click a node or edge to inspect it.</div>';
 }
 
 // --- Graph editing: add/delete node/edge, and exporting the result as a
@@ -889,33 +968,72 @@ function updateCounts() {
   document.getElementById('counts').textContent = `${nn} node${nn===1?'':'s'}, ${ne} edge${ne===1?'':'s'}`;
 }
 
-function addNodeAt(pos) {
-  let name = prompt('New node name (letters, digits, _ or . - must start with a letter or _):');
+// In-page stand-ins for window.prompt()/alert()/confirm() - see the
+// #nwModalOverlay markup's own comment for why the native macOS viewer
+// needs these instead of the real thing. All three return a Promise;
+// nwPromptText resolves to the entered string, or null on Cancel/Escape
+// (matching window.prompt()'s own null-on-cancel contract).
+function nwModal({ message, withInput = false, inputValue = '', onlyOk = false }) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('nwModalOverlay');
+    const inputEl = document.getElementById('nwModalInput');
+    const okBtn = document.getElementById('nwModalOk');
+    const cancelBtn = document.getElementById('nwModalCancel');
+    document.getElementById('nwModalMessage').textContent = message;
+    inputEl.hidden = !withInput;
+    inputEl.value = inputValue;
+    cancelBtn.hidden = onlyOk;
+    overlay.hidden = false;
+    if (withInput) { inputEl.focus(); inputEl.select(); }
+
+    function cleanup(result) {
+      overlay.hidden = true;
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      document.removeEventListener('keydown', keyHandler, true);
+      resolve(result);
+    }
+    function keyHandler(e) {
+      if (e.key === 'Enter') { e.preventDefault(); cleanup(withInput ? inputEl.value : true); }
+      else if (e.key === 'Escape') { e.preventDefault(); cleanup(withInput ? null : false); }
+    }
+    okBtn.onclick = () => cleanup(withInput ? inputEl.value : true);
+    cancelBtn.onclick = () => cleanup(withInput ? null : false);
+    document.addEventListener('keydown', keyHandler, true);
+  });
+}
+function nwAlert(message) { return nwModal({ message, onlyOk: true }); }
+function nwConfirm(message) { return nwModal({ message }); }
+function nwPromptText(message, defaultValue = '') { return nwModal({ message, withInput: true, inputValue: defaultValue }); }
+
+async function addNodeAt(pos) {
+  let name = await nwPromptText('New node name (letters, digits, _ or . - must start with a letter or _):');
   if (name === null) return;
   name = name.trim();
   if (!NODE_NAME_RE.test(name)) {
-    alert('"' + name + '" is not a valid node name.');
+    await nwAlert('"' + name + '" is not a valid node name.');
     return;
   }
   if (cy.getElementById(name).length || cy.nodes().some(n => n.data('label') === name)) {
-    alert('A node named "' + name + '" already exists.');
+    await nwAlert('A node named "' + name + '" already exists.');
     return;
   }
   cy.add({
     group: 'nodes',
     data: {
       id: name, label: name, displayLabel: name, group_label: 'new', shape_label: 'circle',
-      color: '#bbbbbb', shape: 'circle', size: 30, baseSize: 30, latent: false
+      color: '#bbbbbb', shape: 'circle', size: 30, baseSize: 30,
+      baseFontSize: 8, labelFontSize: 8, latent: false
     },
     position: pos
   });
   updateCounts();
 }
 
-function addEdge(sourceId, targetId) {
+async function addEdge(sourceId, targetId) {
   if (sourceId === targetId) return;
   if (cy.edges(`[source = "${sourceId}"][target = "${targetId}"]`).length) {
-    alert('That edge already exists.');
+    await nwAlert('That edge already exists.');
     return;
   }
   cy.add({
@@ -948,16 +1066,17 @@ function deleteSelected() {
 // is dagy's raw (unflipped) value, scaled by POSITION_SCALE for on-screen
 // pixels - so y must be pre-negated here for that import-side negation to
 // cancel out, or every re-imported layout would come back upside down.
-function exportDagitty() {
+async function exportDagitty() {
   if (!cy) return;
   const nodes = cy.nodes().not('.nwedit-pacman');
   const isolated = nodes.filter(n => n.degree() === 0);
   if (isolated.length) {
     const names = isolated.map(n => n.data('label') || n.id()).join(', ');
-    if (!confirm(
+    const ok = await nwConfirm(
       `${isolated.length} node(s) have no edges at all (${names}) and dagy's own DAGs are edge-lists only - ` +
       'they will be silently dropped on import unless you connect them to something first. Export anyway?'
-    )) return;
+    );
+    if (!ok) return;
   }
 
   const scale = window.POSITION_SCALE || 1000;
@@ -1631,6 +1750,7 @@ document.addEventListener('keydown', e => {
 });
 document.getElementById('sizeFactor').oninput = e => applySizeFactor(parseFloat(e.target.value));
 document.getElementById('edgeFactor').oninput = e => applyEdgeFactor(parseFloat(e.target.value));
+document.getElementById('labelFontFactor').oninput = e => applyLabelFontFactor(parseFloat(e.target.value));
 document.getElementById('arrowSizeFactor').oninput = e => applyArrowSizeFactor(parseFloat(e.target.value));
 document.getElementById('arrowColorPicker').oninput = e => applyArrowColor(e.target.value);
 
