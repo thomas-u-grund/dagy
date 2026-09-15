@@ -1,8 +1,7 @@
 *  Example 3: CPDAG, simulation, identification -> estimator, sensitivity.
 *
 *  Edit the adopath line below to point at your own dagy install,
-*  then run the whole file. Nothing here calls `dagy draw`, so no
-*  nwcommands install is required.
+*  then run the whole file. dagy has no external dependency of any kind.
 
 * adopath ++ "/path/to/2026 DAG/software/dagy"
 

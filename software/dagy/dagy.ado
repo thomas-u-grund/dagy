@@ -1,8 +1,9 @@
-*! dagy.ado 0.5.0 2026-08-27
+*! dagy.ado 1.0.0 2026-09-15
 *! Thomas Grund
 *! A causal-DAG workflow for Stata: define a directed acyclic graph,
-*! draw it (via nwcommands) with an automatic layered layout, enumerate
-*! causal/backdoor paths, test d-separation, find back-door and
+*! draw it (via dagy's own dagplot, an interactive cytoscape-based
+*! viewer - no external package required) with an automatic layered
+*! layout, enumerate causal/backdoor paths, test d-separation, find back-door and
 *! front-door adjustment sets (including the optimal variance-minimizing
 *! set), search for instrumental-variable candidates, list testable
 *! implications (local-Markov or comprehensive pairwise, optionally
@@ -18,8 +19,7 @@
 *! dagy list        [name]
 *! dagy drop         name | _all
 *! dagy draw        [name] [, exposure(name) outcome(name) adjust(namelist)
-*!                            labsize(#) nodesize(#) arrowsize(#)
-*!                            nointeractive ...]
+*!                            nodesize(#)]
 *! dagy layout      <name> [, orient(horizontal|vertical) replace]
 *! dagy layout      <name>: node x y [; node x y ...]
 *! dagy path        [name] exposure outcome [, max(#)]

@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>nwplot interactive</title>
+<title>dagplot interactive</title>
 <script>
 __NWEDIT_CYTOSCAPE__
 </script>
@@ -88,7 +88,7 @@ __NWEDIT_CYTOSCAPE__
 <body>
 
 <div id="topbar">
-  <span class="title">nwplot interactive</span>
+  <span class="title">dagplot interactive</span>
   <div class="sep"></div>
   <button id="saveNodesBtn" class="toolbtn" title="Save node edits (.csv)">
     <svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
@@ -130,7 +130,7 @@ __NWEDIT_CYTOSCAPE__
   <div class="section">
     <h3>Node size factor</h3>
     <input type="range" id="sizeFactor" min="0.25" max="3" step="0.05" value="1">
-    <div id="sizeFactorLabel">1.00&times; (mirrors nwplot's nodefactor())</div>
+    <div id="sizeFactorLabel">1.00&times;</div>
   </div>
   <div class="section" id="sizeLegendSection" hidden>
     <h3>Node size legend</h3>
@@ -143,7 +143,7 @@ __NWEDIT_CYTOSCAPE__
   <div class="section">
     <h3>Edge width factor</h3>
     <input type="range" id="edgeFactor" min="0.25" max="3" step="0.05" value="1">
-    <div id="edgeFactorLabel">1.00&times; (mirrors nwplot's edgefactor())</div>
+    <div id="edgeFactorLabel">1.00&times;</div>
   </div>
   <div class="section">
     <h3>Arrow style</h3>
@@ -158,8 +158,8 @@ __NWEDIT_CYTOSCAPE__
   <div class="section" style="border-bottom:none; margin-bottom:0; padding-bottom:0;">
     <h3>Node inspector</h3>
     <div id="inspect"><div class="empty">Click a node to inspect it.</div></div>
-    <div class="hint">Save both CSVs to a known folder, then re-run nwplot with
-      nodexy(x y) importcoords("nodes.csv") edgeimport("edges.csv") to apply these edits.</div>
+    <div class="hint">Saves the current node/edge state as CSV, for reference or hand-editing - not yet
+      re-importable into dagy.</div>
   </div>
 </div>
 
@@ -619,9 +619,9 @@ function render(data) {
   buildSizeLegend(data);
   buildPlotLegend();
   document.getElementById('sizeFactor').value = 1;
-  document.getElementById('sizeFactorLabel').textContent = "1.00× (mirrors nwplot's nodefactor())";
+  document.getElementById('sizeFactorLabel').textContent = "1.00×";
   document.getElementById('edgeFactor').value = 1;
-  document.getElementById('edgeFactorLabel').textContent = "1.00× (mirrors nwplot's edgefactor())";
+  document.getElementById('edgeFactorLabel').textContent = "1.00×";
   document.getElementById('arrowSizeFactor').value = 1;
   document.getElementById('arrowSizeFactorLabel').textContent = '1.00× arrow size';
   startFpsCounter();
@@ -778,7 +778,7 @@ function renderSizeLegendRows() {
 
 function applySizeFactor(factor) {
   document.getElementById('sizeFactorLabel').textContent =
-    factor.toFixed(2) + "× (mirrors nwplot's nodefactor())";
+    factor.toFixed(2) + "×";
   cy.nodes().not('.nwedit-pacman').forEach(n => n.data('size', n.data('baseSize') * factor));
   if (selectedNodeId) {
     const n = cy.getElementById(selectedNodeId);
@@ -788,7 +788,7 @@ function applySizeFactor(factor) {
 
 function applyEdgeFactor(factor) {
   document.getElementById('edgeFactorLabel').textContent =
-    factor.toFixed(2) + "× (mirrors nwplot's edgefactor())";
+    factor.toFixed(2) + "×";
   cy.edges().forEach(e => e.data('width', e.data('baseWidth') * factor));
 }
 

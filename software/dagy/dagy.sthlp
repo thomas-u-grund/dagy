@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.5.0  27aug2026}{...}
+{* *! version 1.0.0  15sep2026}{...}
 {title:Title}
 
 {p2colset 9 15 22 2}{...}
@@ -18,7 +18,7 @@
 {cmd:dagy drop} {it:name} {it:|} {cmd:_all}
 
 {p 8 17 2}
-{cmd:dagy draw} [{it:name}] [{cmd:,} {opt exposure(name)} {opt outcome(name)} {opt adjust(namelist)} {opt labsize(#)} {opt nodesize(#)} {opt arrowsize(#)} {opt nointeractive} {it:nwplot_options}]
+{cmd:dagy draw} [{it:name}] [{cmd:,} {opt exposure(name)} {opt outcome(name)} {opt adjust(namelist)} {opt nodesize(#)}]
 
 {p 8 17 2}
 {cmd:dagy layout} {it:name} [{cmd:,} {opt orient(horizontal|vertical)} {opt replace}]
@@ -82,24 +82,22 @@ statements the model implies and could in principle be checked against data.
 
 {pstd}
 It is deliberately a thin layer: the graph itself - nodes, directed edges,
-ancestors, descendants, reachability, layouts, plotting - is exactly the kind
-of object {help nwcommands} already represents as a directed network.
-{cmd:dagy draw} builds an ordinary {cmd:nwcommands} network from your DAG and
-hands it straight to {cmd:dagplot} for drawing - a standalone fork of
-{help nwplot} bundled with {cmd:dagy} (see {cmd:software/dagplot/}) so its
-interactive-viewer rendering, launcher, and native binary can all be
-fixed/edited without touching {cmd:nwcommands} itself; it otherwise takes
-the same options as {help nwplot}. The causal-inference-specific work
+ancestors, descendants, reachability, layouts - is represented directly by
+{cmd:dagy} itself (as two hidden Stata frames per DAG, plus Mata), with no
+dependency on any other package. {cmd:dagy draw} hands that representation
+straight to {cmd:dagplot} for drawing - dagy's own minimal, self-contained
+interactive (cytoscape.js-based) DAG viewer, bundled alongside {cmd:dagy}
+(see {cmd:software/dagplot/}). The causal-inference-specific work
 (d-separation, back-door adjustment sets, path classification) is graph
 theory implemented directly on top of that representation. {cmd:dagy} never
-requires you to know this - you never see an {cmd:nwset} or {cmd:dagplot}
-call unless you ask {cmd:dagy draw} to pass options through to it.
+requires you to know any of this - you never see a {cmd:dagplot} call
+directly.
 
 {pstd}
 A {cmd:dagy} is identified by a name and stored (as two hidden Stata frames)
-for the rest of the session, the same way {help nwset} keeps a "current
-network". If you omit {it:name} from {cmd:draw}/{cmd:path}/{cmd:dsep}/
-{cmd:adjust}, the most recently defined (or referenced) DAG is used.
+for the rest of the session. If you omit {it:name} from {cmd:draw}/
+{cmd:path}/{cmd:dsep}/{cmd:adjust}, the most recently defined (or
+referenced) DAG is used.
 
 {marker define}{...}
 {title:dagy define}
@@ -136,9 +134,10 @@ Drops one DAG, or (with {cmd:_all}) every DAG defined this session.
 {title:dagy draw}
 
 {pstd}
-Plots the DAG via {cmd:dagplot} (dagy's own {help nwplot} fork - see
-{cmd:software/dagplot/dagplot.ado}). Nodes are colored by their role relative
-to the exposure/outcome/adjustment set you specify:
+Plots the DAG via {cmd:dagplot} (dagy's own minimal, self-contained
+interactive viewer - see {cmd:software/dagplot/dagplot.ado}). Nodes are
+colored by their role relative to the exposure/outcome/adjustment set you
+specify:
 
 {p2colset 9 32 34 2}{...}
 {p2col:{it:role}}{it:meaning}{p_end}
@@ -160,31 +159,19 @@ Nodes are placed with an automatic layered layout the first time a DAG is
 drawn (see {bf:dagy layout} below) - sources near one side, sinks near the
 other, with edges flowing consistently instead of a generic force-directed
 scramble. That layout is then reused on later {cmd:dagy draw} calls for the
-same DAG, so redrawing (e.g. to change colors or export format) doesn't
-reshuffle the picture; use {bf:dagy layout} to recompute it or nudge
-individual nodes. Passing an explicit {cmd:layout()} option (any of
-{cmd:dagplot}'s own layouts, inherited unchanged from {help nwplot}, e.g.
-{cmd:layout(circle)}) overrides this and is handed straight to
-{cmd:dagplot} instead, exactly as in earlier versions.
+same DAG, so redrawing (e.g. to change colors) doesn't reshuffle the
+picture; use {bf:dagy layout} to recompute it or nudge individual nodes.
 
 {pstd}
-{opt labsize(#)}, {opt nodesize(#)} and {opt arrowsize(#)} are convenience
-shortcuts for {cmd:dagplot}'s own {cmd:labelopt(mlabsize(#))},
-{cmd:nodefactor(#)} and {cmd:arrowfactor(#)} (specifying both a shortcut
-and its underlying option at once is an error - pick one; these mirror
-{help nwplot}'s own options of the same name). Any other option (export,
-colors, iterations, ...) is passed straight through to {cmd:dagplot}; see
-{help nwplot}'s help for the full option list (dagplot's own option surface
-is currently identical), e.g. {cmd:export(fig1.png, replace)}.
+{opt nodesize(#)} is a convenience shortcut for {cmd:dagplot}'s own
+{cmd:nodefactor(#)} (specifying both at once is an error - pick one).
 
 {pstd}
-{cmd:dagy draw} defaults to {cmd:dagplot}'s {cmd:interactive} viewer (an
-in-browser/native cytoscape.js canvas you can pan, zoom, and drag nodes
-in); {opt nointeractive} draws a plain static graph
-instead, e.g. for scripts that export a figure unattended and shouldn't
-pop a viewer window on every run. {opt export()} still works either way -
-the static graph is always drawn and exportable even when the
-interactive viewer also opens.
+{cmd:dagy draw} always opens {cmd:dagplot}'s interactive viewer - an
+in-browser/native cytoscape.js canvas you can pan, zoom, and drag nodes in.
+Its toolbar's "Export PNG" button saves a static image of the current view
+if you want one for a paper or slide deck; there is no scripted/unattended
+static-export path.
 
 {marker layout}{...}
 {title:dagy layout}
@@ -550,5 +537,6 @@ one. A node with no edges at all is silently dropped, matching
 {title:Also see}
 
 {psee}
-{help nwcommands}, {help nwset}, {help nwplot}
+{cmd:dagplot} (dagy's own bundled interactive viewer - see
+{cmd:software/dagplot/dagplot.ado})
 {p_end}

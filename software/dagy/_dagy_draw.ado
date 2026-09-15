@@ -1,26 +1,20 @@
-*! _dagy_draw.ado 0.4.0 2026-08-31
+*! _dagy_draw.ado 1.0.0 2026-09-15
 *! internal - see help dagy
 *! dagy draw [name] [, exposure(name) outcome(name) adjust(namelist)
-*!     labsize(#) nodesize(#) arrowsize(#) nointeractive nwplot_options]
+*!     nodesize(#) dagplot_options]
 *!
-*! Builds an ordinary nwcommands network from the DAG's edges and hands
-*! it to dagplot; dagy's own job is (a) working out each node's causal role
-*! (exposure/outcome/adjusted/mediator/confounder/.../unobserved) and
-*! turning that into a color() for dagplot, and (b) a layered layout (see
-*! _dagy_layout_compute.ado / `dagy layout`) passed through as nodexy(),
-*! unless the caller supplies their own layout(). Defaults to dagplot's
-*! interactive (cytoscape-based) viewer; nointeractive draws a plain
-*! static graph instead. dagplot (software/dagplot/dagplot.ado) is a
-*! standalone fork of nwcommands' own nwplot, kept alongside dagy so its
-*! interactive rendering (and, as of this version, its own viewer
-*! launcher/native binary too) can be edited freely; it only needs
-*! nwcommands on adopath for nwset.
+*! dagy's own job is (a) working out each node's causal role (exposure/
+*! outcome/adjusted/mediator/confounder/.../unobserved) and turning that
+*! into a color() for dagplot, and (b) a layered layout (see
+*! _dagy_layout_compute.ado / `dagy layout`), passed through as nodexy().
+*! Always opens dagplot's interactive (cytoscape-based) viewer - there is
+*! no static-plot fallback; see dagplot.ado (software/dagplot/) for why.
+*! dagplot is dagy's own minimal plotting engine, with no dependency on
+*! nwcommands or on any other package.
 program _dagy_draw
 	version 14
 	syntax [anything] [, EXPOSURE(string) OUTCOME(string) ADJUST(string) ///
-		LAYOUT(string) LABELOPT(string) NODEFACTOR(string) ARROWFACTOR(string) ///
-		ARCSTYLE(string) LABSIZE(string) NODESIZE(string) ARROWSIZE(string) ///
-		NOInteractive *]
+		NODEFACTOR(string) NODESIZE(string) *]
 
 	_dagy_resolve `anything'
 	local name `r(name)'
@@ -48,17 +42,11 @@ program _dagy_draw
 		}
 	}
 
-	// cosmetic convenience options merge into their dagplot equivalents;
-	// giving both the raw dagplot option and the convenience option at
-	// once is almost always a mistake (which one wins?), so refuse it.
-	if `"`labsize'"' != "" {
-		if `"`labelopt'"' != "" {
-			local labelopt `"`labelopt' mlabsize(`labsize')"'
-		}
-		else {
-			local labelopt `"mlabsize(`labsize')"'
-		}
-	}
+	// nodesize() is a cosmetic alias for dagplot's own nodefactor() -
+	// dagplot's own default (1) is sized for a general caller's own
+	// layout; dagy's layered layout leaves nodes looking small and
+	// cramped at that setting, so dagy draw defaults to a bigger size
+	// instead unless the caller asks for a specific one.
 	if `"`nodesize'"' != "" {
 		if `"`nodefactor'"' != "" {
 			di as err "specify only one of {bf:nodefactor()} or {bf:nodesize()}"
@@ -66,34 +54,7 @@ program _dagy_draw
 		}
 		local nodefactor `"`nodesize'"'
 	}
-	if `"`arrowsize'"' != "" {
-		if `"`arrowfactor'"' != "" {
-			di as err "specify only one of {bf:arrowfactor()} or {bf:arrowsize()}"
-			exit 198
-		}
-		local arrowfactor `"`arrowsize'"'
-	}
-	// dagplot's own default nodefactor (1) is sized for its force-directed/
-	// mds layouts; dagy's layered layout leaves nodes looking small
-	// and cramped at that setting, so dagy draw defaults to a bigger
-	// size instead unless the caller asks for a specific one. arrowfactor
-	// must scale together with it: dagplot's own arrowfactor default (1)
-	// is a fixed value, not computed relative to nodefactor, and the
-	// line-trim radius that clears space for the arrowhead *does* grow
-	// with nodefactor - so a bigger nodefactor with arrowfactor left at
-	// dagplot's default trims the line back far enough that the
-	// still-tiny default arrowhead becomes imperceptible (confirmed as a
-	// real defect this way: every arrowhead in the drawn DAGs had
-	// silently vanished, leaving plain undirected-looking lines, because
-	// this default nodefactor bump was added without a matching
-	// arrowfactor default alongside it).
 	if `"`nodefactor'"' == "" local nodefactor "1.6"
-	if `"`arrowfactor'"' == "" local arrowfactor "2"
-
-	local cosmeticopts ""
-	if `"`labelopt'"' != "" local cosmeticopts `"`cosmeticopts' labelopt(`labelopt')"'
-	if `"`nodefactor'"' != "" local cosmeticopts `"`cosmeticopts' nodefactor(`nodefactor')"'
-	if `"`arrowfactor'"' != "" local cosmeticopts `"`cosmeticopts' arrowfactor(`arrowfactor')"'
 
 	mata: dagrole = dagy_m_roles(dagA, dagnodes, daglatent, "`exposure'", "`outcome'", `"`adjust'"')
 	mata: st_local("nn", strofreal(rows(dagnodes)))
@@ -108,22 +69,25 @@ program _dagy_draw
 	local colormap_outcome              "red"
 	local colormap_unobserved           "gs12"
 
-	// a layout is computed the first time a DAG is drawn and then
-	// reused (stable across repeated `dagy draw` calls); `dagy layout`
-	// lets the user recompute it or pin individual nodes afterward.
-	local usenodexy = (`"`layout'"' == "")
-	if `usenodexy' {
-		cap confirm frame dagy_`name'_xy
-		if _rc {
-			_dagy_layout_compute `name' horizontal `outcome'
-		}
-		mata: dagy_m_readxy("dagy_`name'_xy", dagxynodes=J(0,1,""), dagx=J(0,1,.), dagy=J(0,1,.))
+	// A layout is computed the first time a DAG is drawn and then reused
+	// (stable across repeated `dagy draw` calls); `dagy layout` lets the
+	// user recompute it or pin individual nodes afterward.
+	cap confirm frame dagy_`name'_xy
+	if _rc {
+		_dagy_layout_compute `name' horizontal `outcome'
 	}
-	if `"`arcstyle'"' != "" local cosmeticopts `"`cosmeticopts' arcstyle(`arcstyle')"'
+	mata: dagy_m_readxy("dagy_`name'_xy", dagxynodes=J(0,1,""), dagx=J(0,1,.), dagy=J(0,1,.))
+	// dagxynodes/dagx/dagy are stored in dagnodes' own order (both come
+	// from the same layout computation over dagnodes/dagA) - a plain
+	// count check catches a stale layout frame left over from a DAG
+	// that has since gained/lost nodes (dagy layout doesn't otherwise
+	// invalidate its own frame when the DAG definition changes).
+	mata: st_local("nnxy", strofreal(rows(dagxynodes)))
+	if `nnxy' != `nn' {
+		di as err "DAG `name' has `nn' node(s) but its stored layout has `nnxy' - recompute it with {bf:dagy layout `name', replace}."
+		exit 498
+	}
 
-	// nwset's mat() path doesn't accept its own clear option cleanly
-	// in this nwcommands build, so clear by hand - and save/restore
-	// whatever the user had in memory around that.
 	local haddata = (_N > 0 | c(k) > 0)
 	if `haddata' {
 		tempfile dagy_userdata
@@ -131,24 +95,16 @@ program _dagy_draw
 	}
 
 	qui clear
-	nwset, mat(dagA) name(dagy_`name') nodenames(dagnodes') replace
-
+	qui set obs `nn'
+	qui gen str244 _dagnode = ""
 	qui gen str32 _dagrole = ""
-	if `usenodexy' {
-		qui gen double _dagx = .
-		qui gen double _dagy = .
-	}
-	forvalues i = 1/`nn' {
-		mata: st_local("nm", dagnodes[`i'])
-		mata: st_local("rl", dagrole[`i'])
-		qui replace _dagrole = "`rl'" if _nwnode == "`nm'"
-		if `usenodexy' {
-			mata: st_local("xi", strofreal(dagx[`i']))
-			mata: st_local("yi", strofreal(dagy[`i']))
-			qui replace _dagx = `xi' if _nwnode == "`nm'"
-			qui replace _dagy = `yi' if _nwnode == "`nm'"
-		}
-	}
+	qui gen double _dagx = .
+	qui gen double _dagy = .
+	mata: st_sstore((1::`nn'), "_dagnode", dagnodes)
+	mata: st_sstore((1::`nn'), "_dagrole", dagrole)
+	mata: st_store((1::`nn'), "_dagx", dagx)
+	mata: st_store((1::`nn'), "_dagy", dagy)
+	mata: st_matrix("_dagAplot", dagA)
 
 	// note: no `clean' - some role names (e.g. "ancestor of both")
 	// contain spaces, and `clean' strips the quoting that keeps a
@@ -162,43 +118,10 @@ program _dagy_draw
 		local palette `"`palette' `colormap_`key''"'
 	}
 
-	local layoutopt ""
-	if `usenodexy' local layoutopt "nodexy(_dagx _dagy)"
-	else local layoutopt "layout(`layout')"
+	dagplot, adjmatrix(_dagAplot) nodename(_dagnode) nodexy(_dagx _dagy) ///
+		lab arrows color(_dagrole) colorpalette(`palette') nodefactor(`nodefactor') `options'
 
-	// dagy draw defaults to dagplot's interactive (cytoscape-based) viewer
-	// rather than a plain static graph; nointeractive restores the old
-	// static-only behavior, e.g. for unattended figure-export scripts
-	// that shouldn't pop a browser/native-viewer window on every run.
-	// Note: `interactive' is deliberately NOT declared as dagy's own
-	// option above - Stata's `syntax` auto-recognizes a bare flag's
-	// no-form (a flag named X silently also accepts noX), so declaring
-	// both `interactive' and `nointeractive' here would make Stata's
-	// built-in noX handling swallow "nointeractive" as the auto-negation
-	// of `interactive' before it ever reaches our own NOInteractive local
-	// (confirmed directly - it came back empty, not an error, and never
-	// reached `options' either). Leaving `interactive' undeclared means
-	// a caller typing it explicitly just falls through to `options'
-	// instead - checked for below so it isn't also added a second time
-	// via `cosmeticopts' (confirmed directly that dagplot, unlike a
-	// plain flag option in isolation, rejects "interactive" given twice
-	// in one call with "option interactive not allowed").
-	local _dagy_hasinteractive = 0
-	foreach _dagy_opt of local options {
-		if "`_dagy_opt'" == "interactive" local _dagy_hasinteractive = 1
-	}
-	if `"`nointeractive'"' == "" & !`_dagy_hasinteractive' {
-		local cosmeticopts `"`cosmeticopts' interactive"'
-	}
-
-	// note: not "dagplot dagy_`name'" - nwset silently renames on a name
-	// clash (e.g. redrawing the same DAG twice in one session), so we
-	// rely on the network it just created being the current network.
-	// dagplot (software/dagplot/dagplot.ado), not nwcommands' own nwplot:
-	// a standalone fork so its `interactive` rendering (and viewer
-	// launcher/native binary) can be fixed/edited here without touching
-	// nwcommands - see dagplot.ado's own header.
-	dagplot, lab arrows color(_dagrole, colorpalette(`palette')) `layoutopt' `cosmeticopts' `options'
+	capture matrix drop _dagAplot
 
 	if `haddata' {
 		qui use `dagy_userdata', clear

@@ -2,10 +2,10 @@
 *  MAG conversion, comprehensive local tests, background-knowledge CPDAG.
 *
 *  Edit the adopath line below to point at your own dagy install,
-*  then run the whole file. Nothing here calls `dagy draw`, so no
-*  nwcommands install is required. Part 2 reads a local file shipped
-*  alongside this example (adjust the path if you moved it) rather than
-*  fetching from dagitty.net live, so it works with no network access.
+*  then run the whole file. dagy has no external dependency of any kind.
+*  Part 2 reads a local file shipped alongside this example (adjust the
+*  path if you moved it) rather than fetching from dagitty.net live, so
+*  it works with no network access.
 
 * adopath ++ "/path/to/2026 DAG/software/dagy"
 
