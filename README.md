@@ -1,111 +1,117 @@
-# Thinking Causally with Stata
+# dagy
 
-A working software package, `dagy`, plus a draft Stata Journal article
-about it: a Stata command family that lets you define a causal DAG and
-compute with it - causal vs. backdoor paths, d-separation, minimal
-sufficient back-door and front-door adjustment sets, instrumental-variable
-candidates, and testable implications - with its own graph storage
-(Stata frames + Mata) and its own interactive plotting engine. No
-dependency on `nwcommands`, or on any other external package, of any
-kind.
+A Stata command family for computing with causal DAGs: causal vs.
+backdoor paths, d-separation, minimal sufficient back-door and
+front-door adjustment sets, instrumental-variable candidates, and
+testable implications - with its own graph storage (Stata frames +
+Mata) and its own interactive plotting engine, `dagplot`.
+
+No dependency on `nwcommands`, or on any other external package, of
+any kind.
 
 Named `dagy` rather than `dag` to avoid colliding with the existing,
 unrelated SSC package literally called `dag` (Chunsen Wu, 2018 -
 `ancestor`/`child` commands for DAG simulation).
 
-- `docs/article/dagy.tex` - the Stata Journal article draft.
-- `docs/PITCH.md` - background/positioning notes the article draws on
-  (originally written for a book pitch; superseded by the article above).
-- `docs/idea.docx` - original notes this was sketched from.
-- `software/dagy/` - the `dagy` Stata package (source).
-- `software/dagplot/` - `dagplot`, dagy's own minimal, self-contained
-  interactive (cytoscape.js-based) graph viewer that `dagy draw` plots
-  through (see `software/dagplot/dagplot.ado`'s own header). No "network
-  object" model, no static-plot output, no if/in filtering - just what
-  `dagy draw` needs: a directed adjacency matrix, node colors/labels, a
-  caller-supplied layout, and the interactive viewer (rendering
-  (`dagplot_template.html`), launcher (`_dagplot_openviewer.ado`), and
-  native viewer binary (`native/dagplot_viewer.mm` /
-  `plugins/macos/dagplot_viewer`)).
-- `examples/` - runnable `.do` files.
+## What's in this repo
+
+- `software/dagy/` - the `dagy` Stata package (source): define a DAG,
+  compute paths/adjustment sets/d-separation, simulate data from it,
+  check testable implications, translate an identification result
+  into a Stata estimation command, sensitivity analysis, CPDAGs. Also
+  ships `dagy_install`, a one-time setup helper (see Installation).
+- `software/dagplot/` - `dagy`'s own minimal, self-contained
+  interactive (cytoscape.js-based) graph viewer that `dagy draw`
+  plots through. No "network object" model, no static-plot output,
+  no if/in filtering - just what `dagy draw` needs: a directed
+  adjacency matrix, node colors/labels, a caller-supplied layout, and
+  an interactive viewer you can edit in (add/delete nodes and edges,
+  export back to `dagy` as a real DAG).
+- `examples/` - runnable `.do` files demonstrating the package.
 
 ## Requirements
 
-- Stata 16+ (uses frames).
-- `software/dagy/` and `software/dagplot/` on your `adopath`. Nothing
-  else - no `nwcommands`, no SSC packages.
+- Stata 16 or later (the package uses frames).
+- No other Stata packages required - no `nwcommands`, no SSC
+  installs.
 
-## Try it
+## Installation
 
-Working from this checkout directly (e.g. while developing):
-
-```stata
-adopath ++ "/path/to/2026 DAG/software/dagy"
-adopath ++ "/path/to/2026 DAG/software/dagplot"
-
-do "/path/to/2026 DAG/examples/ex1_confounding.do"
-do "/path/to/2026 DAG/examples/ex2_extensions.do"
-do "/path/to/2026 DAG/examples/ex3_roadmap.do"
-```
-
-For anyone else (e.g. a colleague trying the software, not this whole
-research repo), `software/` and `examples/` are mirrored to a public,
-`net`-installable repo - see its own README for instructions:
-https://github.com/thomas-u-grund/dagy
+Run these two lines once, from within Stata:
 
 ```stata
 net install dagy, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagy/") replace
 dagy_install
 ```
 
-(`dagy_install` is a bundled helper command, not a separate package -
-`net install` alone only fetches recognized program files, not
-dagplot's HTML/JS/binary rendering assets, so `dagy_install` installs
-the `dagplot` package and downloads those assets to where it expects
-to find them. See `software/dagy/dagy_install.ado`'s own header.)
+The second line is a bundled helper command, not a separate package -
+plain `net install` only fetches recognized Stata program files
+(`.ado`/`.sthlp`), not the `dagplot` viewer's HTML/JS/binary rendering
+assets, so `dagy_install` installs the companion `dagplot` package and
+then downloads those assets to exactly where it expects to find them
+(see `software/dagy/dagy_install.ado`'s own header for why that needs
+a real command rather than Stata's own `net get`). Everything lands in
+your personal Stata `ado` directory, already on your `adopath` - no
+manual `adopath` line to add or remember in future sessions. Confirm
+it worked:
 
-Keep that mirror in sync manually when `software/` changes here - see
-"Public mirror" below.
+```stata
+which dagy
+which dagplot
+```
+
+To update later, re-run `net install dagy, ... replace` followed by
+`dagy_install`.
+
+### Alternative: run from a local clone
+
+If you'd rather work from a local copy of this repo instead (e.g. to
+read or edit the source):
+
+```stata
+adopath ++ "/path/to/dagy/software/dagy"
+adopath ++ "/path/to/dagy/software/dagplot"
+```
+
+Replace `/path/to/dagy` with wherever you cloned this repository. On
+Windows, forward slashes work fine in `adopath` too, e.g.
+`adopath ++ "C:/Users/you/dagy/software/dagy"`.
+
+## Try it
+
+```stata
+do "/path/to/dagy/examples/ex1_confounding.do"
+do "/path/to/dagy/examples/ex2_extensions.do"
+do "/path/to/dagy/examples/ex3_roadmap.do"
+```
+
+(Adjust the path, or skip the `do` prefix and just run the examples
+directly, if you installed via `net install` rather than a local
+clone - you'll need to download the `examples/` folder separately in
+that case, since installation only fetches the Stata packages.)
+
+`dagy draw` opens an interactive viewer window. On macOS this is a
+self-contained native chromeless window; on Windows and Linux (no
+native viewer binary shipped yet) it opens the same interactive
+viewer in your default web browser instead - drawing, editing, and
+exporting all work the same way there, just inside a browser tab
+rather than a standalone window.
 
 ## Status
 
-Working v1.0 prototype - the full original roadmap is implemented: back-
-door and front-door adjustment, instrumental-variable candidates,
-testable implications (optionally checked against real data), an
-automatic layered graph layout with manual overrides, Markov-equivalence
-classes (CPDAGs), simulating data from the DAG's structural model,
-translating an identification result into a Stata estimation command, and
-a graphical sensitivity check for back-door adjustment sets. See
-`docs/article/dagy.tex` for the full writeup (currently still describing
-the earlier `nwcommands`-based version - due for an update to match).
+Working v1.0 prototype - the full original roadmap is implemented:
+back-door and front-door adjustment, instrumental-variable
+candidates, testable implications (optionally checked against real
+data), an automatic layered graph layout with manual overrides,
+Markov-equivalence classes (CPDAGs), simulating data from the DAG's
+structural model, translating an identification result into a Stata
+estimation command, and a graphical sensitivity check for back-door
+adjustment sets.
 
-`dagy draw`'s interactive viewer now round-trips: add/delete nodes and
+`dagy draw`'s interactive viewer round-trips: add/delete nodes and
 edges (and a Latent toggle) directly in the viewer, then its "Export
 DAG" button writes a dagitty model file that `dagy import <name>,
-file("...") replace` loads back for real - no separate Stata-side
-importer needed, it reuses `dagy import`'s existing dagitty parser. A
-node with no edges at all is dropped on import (`dagy`'s DAGs are
-edge-lists only), so connect a new node to something before exporting.
-
-`software/dagplot/` is laid out flat (no `vendor/`/`plugins/`
-subdirectories) specifically so it can be shipped via Stata's `net
-install`, which only supports installing into one flat directory -
-the per-platform viewer binary is named `dagplot_viewer_macos` /
-`dagplot_viewer_windows.exe` / `dagplot_viewer_unix` instead of living
-in a `plugins/<platform>/` subfolder. Don't reintroduce subdirectories
-there without also dropping `net install` support.
-
-## Public mirror
-
-https://github.com/thomas-u-grund/dagy carries only `software/` and
-`examples/` (with real commit history for those paths, via
-`git filter-repo`) plus its own standalone README - not the article,
-book, or pitch docs, which stay private to this repo. It's not a git
-remote of this repo; there's no automated sync. After a `software/`
-or `examples/` change here that should reach the public repo, redo it
-by hand: clone this repo fresh, `git filter-repo --path software/
---path examples/ --path README.md --path .gitignore`, then push to
-the existing `thomas-u-grund/dagy` remote (force-push needed since
-the filtered history is rebuilt from scratch each time - confirm
-first that nothing was committed directly to the public repo that
-would be lost).
+file("...") replace` loads back for real - no separate importer
+needed, it reuses `dagy import`'s own dagitty parser. A node with no
+edges at all is dropped on import (`dagy`'s DAGs are edge-lists
+only), so connect a new node to something before exporting.
