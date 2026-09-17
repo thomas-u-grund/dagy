@@ -55,8 +55,14 @@ https://github.com/thomas-u-grund/dagy
 
 ```stata
 net install dagy, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagy/") replace
-net install dagplot, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagplot/") replace
+dagy_install
 ```
+
+(`dagy_install` is a bundled helper command, not a separate package -
+`net install` alone only fetches recognized program files, not
+dagplot's HTML/JS/binary rendering assets, so `dagy_install` installs
+the `dagplot` package and downloads those assets to where it expects
+to find them. See `software/dagy/dagy_install.ado`'s own header.)
 
 Keep that mirror in sync manually when `software/` changes here - see
 "Public mirror" below.

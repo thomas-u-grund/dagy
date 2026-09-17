@@ -10,9 +10,11 @@ d translating an identification result into a Stata estimation command.
 d Uses its own graph storage (frames + Mata) - no dependency on
 d nwcommands or any other external package.
 d
-d Also install the companion package dagplot (dagy's own interactive
-d graph viewer, used by "dagy draw"):
-d       net install dagplot, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagplot/")
+d After installing this package, run the bundled dagy_install command
+d once to also install the companion package dagplot (dagy's own
+d interactive graph viewer, used by "dagy draw") and download its
+d rendering assets:
+d       dagy_install
 d
 d KW: DAG
 d KW: causal inference
@@ -27,6 +29,7 @@ d Distribution-Date: 20260917
 d
 f dagy.ado
 f dagy.sthlp
+f dagy_install.ado
 f _dagy_adjust.ado
 f _dagy_cpdag.ado
 f _dagy_define.ado
