@@ -1,0 +1,3 @@
+v 3
+d 'DAGY': causal DAG computations for Stata
+p dagy

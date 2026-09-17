@@ -37,6 +37,8 @@ unrelated SSC package literally called `dag` (Chunsen Wu, 2018 -
 
 ## Try it
 
+Working from this checkout directly (e.g. while developing):
+
 ```stata
 adopath ++ "/path/to/2026 DAG/software/dagy"
 adopath ++ "/path/to/2026 DAG/software/dagplot"
@@ -45,6 +47,19 @@ do "/path/to/2026 DAG/examples/ex1_confounding.do"
 do "/path/to/2026 DAG/examples/ex2_extensions.do"
 do "/path/to/2026 DAG/examples/ex3_roadmap.do"
 ```
+
+For anyone else (e.g. a colleague trying the software, not this whole
+research repo), `software/` and `examples/` are mirrored to a public,
+`net`-installable repo - see its own README for instructions:
+https://github.com/thomas-u-grund/dagy
+
+```stata
+net install dagy, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagy/") replace
+net install dagplot, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagplot/") replace
+```
+
+Keep that mirror in sync manually when `software/` changes here - see
+"Public mirror" below.
 
 ## Status
 
@@ -65,3 +80,26 @@ file("...") replace` loads back for real - no separate Stata-side
 importer needed, it reuses `dagy import`'s existing dagitty parser. A
 node with no edges at all is dropped on import (`dagy`'s DAGs are
 edge-lists only), so connect a new node to something before exporting.
+
+`software/dagplot/` is laid out flat (no `vendor/`/`plugins/`
+subdirectories) specifically so it can be shipped via Stata's `net
+install`, which only supports installing into one flat directory -
+the per-platform viewer binary is named `dagplot_viewer_macos` /
+`dagplot_viewer_windows.exe` / `dagplot_viewer_unix` instead of living
+in a `plugins/<platform>/` subfolder. Don't reintroduce subdirectories
+there without also dropping `net install` support.
+
+## Public mirror
+
+https://github.com/thomas-u-grund/dagy carries only `software/` and
+`examples/` (with real commit history for those paths, via
+`git filter-repo`) plus its own standalone README - not the article,
+book, or pitch docs, which stay private to this repo. It's not a git
+remote of this repo; there's no automated sync. After a `software/`
+or `examples/` change here that should reach the public repo, redo it
+by hand: clone this repo fresh, `git filter-repo --path software/
+--path examples/ --path README.md --path .gitignore`, then push to
+the existing `thomas-u-grund/dagy` remote (force-push needed since
+the filtered history is rebuilt from scratch each time - confirm
+first that nothing was committed directly to the public repo that
+would be lost).

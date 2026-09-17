@@ -1,0 +1,31 @@
+v 3
+d 'DAGPLOT': dagy's own interactive graph viewer
+d
+d dagplot is dagy's minimal, self-contained interactive (cytoscape.js-
+d based) graph viewer that "dagy draw" plots through - no "network
+d object" model, no static-plot output, just what dagy draw needs.
+d Requires the companion package dagy:
+d       net install dagy, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagy/")
+d
+d On macOS this ships a compiled chromeless native viewer binary. On
+d Windows/Linux (no native binary shipped yet) the same interactive
+d viewer opens in your default web browser instead - everything works
+d the same way, just inside a browser tab.
+d
+d KW: DAG
+d KW: graph
+d KW: visualization
+d
+d Requires: Stata version 16
+d
+d Author: Thomas Grund
+d Support: email thomas.u.grund@gmail.com
+d
+d Distribution-Date: 20260917
+d
+f dagplot.ado
+f dagplot.sthlp
+f _dagplot_openviewer.ado
+f dagplot_template.html
+f cytoscape.min.js
+f dagplot_viewer_macos

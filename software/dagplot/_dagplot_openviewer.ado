@@ -3,9 +3,11 @@
 *! (see dagplot.ado's own top header) so its viewer-launch path - not
 *! just the rendering - is fully independent of nwcommands. Opens a
 *! self-contained local HTML file in the chromeless native viewer
-*! (native/dagplot_viewer.mm, compiled to plugins/<platform>/
-*! dagplot_viewer), falling back to `view browse` when that binary isn't
-*! available for the current platform or fails to launch.
+*! (native/dagplot_viewer.mm, compiled to a flat per-platform binary -
+*! dagplot_viewer_macos/dagplot_viewer_windows.exe/dagplot_viewer_unix,
+*! not a plugins/<platform>/ subdirectory, so `net install`'s flat file
+*! layout can ship it), falling back to `view browse` when that binary
+*! isn't available for the current platform or fails to launch.
 *!
 *! Differs from nw_openviewer.ado in exactly one respect: where the
 *! binary comes from. nw_openviewer.ado resolves nwcommands' own
@@ -57,12 +59,14 @@ program _dagplot_openviewer, rclass
 	qui findfile "_dagplot_openviewer.ado"
 	local _nwov_fullpath `"`r(fn)'"'
 	local _nwov_pkgdir = substr(`"`_nwov_fullpath'"', 1, strrpos(`"`_nwov_fullpath'"', "/") - 1)
-	local _nwov_sub = "macos"
-	if "`c(os)'" == "Windows" local _nwov_sub = "windows"
-	if "`c(os)'" == "Unix" local _nwov_sub = "unix"
-	local _nwov_fn = "dagplot_viewer"
-	if "`c(os)'" == "Windows" local _nwov_fn = "dagplot_viewer.exe"
-	local _nwov_viewerpath = "`_nwov_pkgdir'/plugins/`_nwov_sub'/`_nwov_fn'"
+	// Flat filenames, not a plugins/<platform>/ subdirectory: `net install`
+	// puts every listed file into one flat directory (no subfolders), so
+	// the per-platform binary is distinguished by filename instead - same
+	// idiom other Stata packages shipping compiled platform binaries use.
+	local _nwov_fn = "dagplot_viewer_macos"
+	if "`c(os)'" == "Windows" local _nwov_fn = "dagplot_viewer_windows.exe"
+	if "`c(os)'" == "Unix" local _nwov_fn = "dagplot_viewer_unix"
+	local _nwov_viewerpath = "`_nwov_pkgdir'/`_nwov_fn'"
 	capture confirm file "`_nwov_viewerpath'"
 	if _rc local _nwov_viewerpath ""
 

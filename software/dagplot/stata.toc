@@ -1,0 +1,3 @@
+v 3
+d 'DAGPLOT': dagy's interactive graph viewer
+p dagplot

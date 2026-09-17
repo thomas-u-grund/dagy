@@ -1,0 +1,51 @@
+v 3
+d 'DAGY': module to compute with causal DAGs
+d
+d dagy is a Stata command family for defining and computing with causal
+d DAGs: causal vs. backdoor paths, d-separation, minimal sufficient
+d back-door and front-door adjustment sets, instrumental-variable
+d candidates, testable implications, Markov-equivalence classes
+d (CPDAGs), simulating data from the DAG's structural model, and
+d translating an identification result into a Stata estimation command.
+d Uses its own graph storage (frames + Mata) - no dependency on
+d nwcommands or any other external package.
+d
+d Also install the companion package dagplot (dagy's own interactive
+d graph viewer, used by "dagy draw"):
+d       net install dagplot, from("https://raw.githubusercontent.com/thomas-u-grund/dagy/main/software/dagplot/")
+d
+d KW: DAG
+d KW: causal inference
+d KW: graph
+d
+d Requires: Stata version 16
+d
+d Author: Thomas Grund
+d Support: email thomas.u.grund@gmail.com
+d
+d Distribution-Date: 20260917
+d
+f dagy.ado
+f dagy.sthlp
+f _dagy_adjust.ado
+f _dagy_cpdag.ado
+f _dagy_define.ado
+f _dagy_draw.ado
+f _dagy_drop.ado
+f _dagy_dsep.ado
+f _dagy_estimate.ado
+f _dagy_frontdoor.ado
+f _dagy_import.ado
+f _dagy_iv.ado
+f _dagy_layout.ado
+f _dagy_layout_compute.ado
+f _dagy_list.ado
+f _dagy_localtests.ado
+f _dagy_mag.ado
+f _dagy_mata.ado
+f _dagy_path.ado
+f _dagy_refute.ado
+f _dagy_resolve.ado
+f _dagy_sensitivity.ado
+f _dagy_simulate.ado
+f _dagy_testable.ado

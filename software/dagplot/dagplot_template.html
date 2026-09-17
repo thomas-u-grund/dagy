@@ -648,7 +648,16 @@ function render(data) {
     ]
   });
 
-  cy.on('tap', 'node:not(.nwedit-pacman)', evt => {
+  cy.on('tap', 'node', evt => {
+    // The vendored cytoscape.js build has no :not() selector support -- a
+    // 'node:not(.nwedit-pacman)' selector string here silently falls back
+    // to matching every node (pacman included), logging a console warning
+    // but never throwing, so this was never caught by a syntax error. That
+    // let the pacman easter-egg node be wired into a real edge in Add Edge
+    // mode, which then leaked into exportDagitty()'s output verbatim and
+    // would corrupt a `dagy import` on the resulting file. Filter in JS
+    // instead, which this build's plain class/tag selectors do support.
+    if (evt.target.hasClass('nwedit-pacman')) return;
     if (editMode === 'addedge') {
       const id = evt.target.id();
       if (!edgeSourceId) {

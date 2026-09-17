@@ -171,7 +171,7 @@ program dagplot, rclass
 	di as txt "Preparing interactive view..."
 	mata: st_local("_dp_pkgdir", _dagplot_installdir())
 	local _dp_template = "`_dp_pkgdir'/dagplot_template.html"
-	local _dp_vendorjs = "`_dp_pkgdir'/vendor/cytoscape.min.js"
+	local _dp_vendorjs = "`_dp_pkgdir'/cytoscape.min.js"
 	capture confirm file "`_dp_template'"
 	if _rc {
 		di as err "dagplot_template.html not found at `_dp_template'; reinstall the package."
